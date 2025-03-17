@@ -810,7 +810,13 @@
 .nav-tabs .nav-link:hover {
   color: #0056b3;
 }
-
+.navbar.bg-dark {
+  background-color: rgba(33, 37, 41,1) !important;
+  color: white;
+}
+.navbar.bg-dark .nav-link {
+  color: white !important;
+}
 /* Filter Dropdown */
 .dropdown-toggle {
   background-color: #fff;
@@ -911,6 +917,21 @@
   background: url("path-to-zncc-flag.png") no-repeat center/cover;
 }
 /* src/components/LoadingSpinner.css */
+/* src/components/LoadingSpinner.css */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  pointer-events: none;
+}
+
 .loading-container {
   display: flex;
   flex-direction: column;
@@ -918,6 +939,7 @@
   justify-content: center;
   gap: 10px;
   min-height: 100px;
+  background: transparent !important;
 }
 
 .cricket-spinner {
@@ -930,7 +952,7 @@
 .cricket-ball {
   width: 20%;
   height: 20%;
-  background: #ff0000; /* Traditional cricket ball red */
+  background: #ff0000;
   border-radius: 50%;
   position: absolute;
   animation: bowl 1.5s infinite ease-in-out;
@@ -946,17 +968,16 @@
 .stumps span {
   width: 4px;
   height: 100%;
-  background: #d4a017; /* Wood-like color */
+  background: #d4a017;
   border-radius: 2px;
 }
 
 .loading-message {
-  color: var(--bs-gray-600);
+  color: #000;
   font-size: 1rem;
   margin: 0;
 }
 
-/* Animation keyframes */
 @keyframes bowl {
   0% {
     transform: translateX(-100%) scale(0.8);
@@ -972,9 +993,8 @@
   }
 }
 
-/* Theme support */
 [data-theme="dark"] .loading-message {
-  color: var(--bs-gray-400);
+  color: #fff;
 }
 
 [data-theme="dark"] .stumps span {

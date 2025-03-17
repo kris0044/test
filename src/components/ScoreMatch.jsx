@@ -7,7 +7,6 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import AdminLayout from "./AdminLayout";
 import api from "../utility/axiosInterceptor.js";
 
-
 const ScoreMatch = () => {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -31,6 +30,7 @@ const ScoreMatch = () => {
   const [editScore, setEditScore] = useState(null);
   const [selectedScores, setSelectedScores] = useState([]);
   const [dismissedBatsmen, setDismissedBatsmen] = useState({});
+  const [retiredHurtPlayers, setRetiredHurtPlayers] = useState({});
   const [matchStats, setMatchStats] = useState({});
   const [wicketModal, setWicketModal] = useState(null);
   const [tossWinner, setTossWinner] = useState(null);
@@ -51,10 +51,6 @@ const ScoreMatch = () => {
         const scoresResponse = await api.get(`/api/scores?match=${matchId}`);
         setScores(scoresResponse.data);
 
-        console.log("Players:", playersResponse.data);
-        console.log("Scores:", scoresResponse.data);
-        console.log("Captains from backend:", matchData.captains);
-
         setCurrentInnings(matchData.currentInnings || 1);
         setBattingTeam(matchData.battingTeam || matchData.teams[0]);
         setBowlingTeam(matchData.bowlingTeam || matchData.teams[1]);
@@ -70,6 +66,7 @@ const ScoreMatch = () => {
         setNewOverStarted(matchData.newOverStarted !== undefined ? matchData.newOverStarted : true);
         setTossWinner(matchData.tossWinner || null);
         setTossChoice(matchData.tossChoice || "");
+        setRetiredHurtPlayers(matchData.retiredHurtPlayers || {});
 
         recalculateMatchState(scoresResponse.data, matchData);
 
@@ -106,6 +103,7 @@ const ScoreMatch = () => {
     let initialOvers = {};
     let initialBallsBowled = {};
     let initialDismissed = {};
+    let initialRetiredHurt = {};
     let initialStats = {};
 
     for (let i = 1; i <= totalInnings; i++) {
@@ -114,6 +112,7 @@ const ScoreMatch = () => {
       initialOvers[`innings${i}`] = 0.0;
       initialBallsBowled[`innings${i}`] = 0;
       initialDismissed[`innings${i}`] = [];
+      initialRetiredHurt[`innings${i}`] = [];
       initialStats[`innings${i}`] = { 
         batting: {}, 
         bowling: {}, 
@@ -127,6 +126,7 @@ const ScoreMatch = () => {
     setOvers(initialOvers);
     setBallsBowled(initialBallsBowled);
     setDismissedBatsmen(initialDismissed);
+    setRetiredHurtPlayers(initialRetiredHurt);
     setMatchStats(initialStats);
 
     recalculateMatchState(scoresData, matchData);
@@ -143,6 +143,7 @@ const ScoreMatch = () => {
       oversBowled: initialOvers,
       ballsBowled: initialBallsBowled,
       dismissedBatsmen: initialDismissed,
+      retiredHurtPlayers: initialRetiredHurt,
       matchStats: initialStats,
       newOverStarted: true,
       currentBatsmen: [null, null],
@@ -164,6 +165,7 @@ const ScoreMatch = () => {
     let overs = {};
     let balls = {};
     let dismissed = {};
+    let retiredHurt = {};
     let stats = {};
 
     for (let i = 1; i <= totalInnings; i++) {
@@ -172,6 +174,7 @@ const ScoreMatch = () => {
       overs[`innings${i}`] = 0.0;
       balls[`innings${i}`] = 0;
       dismissed[`innings${i}`] = [];
+      retiredHurt[`innings${i}`] = matchData.retiredHurtPlayers?.[`innings${i}`] || [];
       stats[`innings${i}`] = { 
         batting: {}, 
         bowling: {}, 
@@ -206,10 +209,10 @@ const ScoreMatch = () => {
       runs[inningsKey] += score.runs;
       if (score.wicket) {
         wickets[inningsKey]++;
-        dismissed[inningsKey].push(batsmanId);
+        dismissed[inningsKey].push(score.outBatsman || batsmanId);
         if (bowlerId && score.wicketType !== "run out") {
           stats[inningsKey].bowling[bowlerId].wickets++;
-          stats[inningsKey].bowling[bowlerId].wicketsTaken.push(batsmanId);
+          stats[inningsKey].bowling[bowlerId].wicketsTaken.push(score.outBatsman || batsmanId);
           stats[inningsKey].bowling[bowlerId].wicketTypes[score.wicketType] =
             (stats[inningsKey].bowling[bowlerId].wicketTypes[score.wicketType] || 0) + 1;
         }
@@ -272,11 +275,12 @@ const ScoreMatch = () => {
     setOvers(overs);
     setBallsBowled(balls);
     setDismissedBatsmen(dismissed);
+    setRetiredHurtPlayers(retiredHurt);
     setMatchStats(stats);
   };
 
   const handleScore = async (type, value, wicketType = null, fielders = [], runsOnWicket = 0, outBatsman = null) => {
-    if (!currentBatsmen[0] || (!currentBowler && !newOverStarted && type !== "run out")) {
+    if (!currentBatsmen[0] || (!currentBowler && !newOverStarted && type !== "run out" && type !== "retiredHurt")) {
       toast.error("Select batsmen and bowler first!");
       return;
     }
@@ -381,38 +385,49 @@ const ScoreMatch = () => {
         setCurrentBatsmen([null, currentBatsmen[1]]);
         if (wicketType === "run out") scoreEntry.bowler = null;
         break;
+      case "retiredHurt":
+        setRetiredHurtPlayers((prev) => ({
+          ...prev,
+          [currentOversKey]: [...(prev[currentOversKey] || []), currentBatsmen[0]?._id],
+        }));
+        setCurrentBatsmen([null, currentBatsmen[1]]);
+        break;
       default:
         break;
     }
 
     try {
-      const response = await api.post("/api/scores", scoreEntry);
-      setScores((prev) => [...prev, response.data]);
+      if (type !== "retiredHurt") {
+        const response = await api.post("/api/scores", scoreEntry);
+        setScores((prev) => [...prev, response.data]);
 
-      if (isLegalDelivery) {
-        setBallsBowled((prev) => {
-          const newBalls = (prev[currentOversKey] || 0) + 1;
-          return { ...prev, [currentOversKey]: newBalls };
-        });
-        setOvers((prev) => {
-          const newBalls = (ballsBowled[currentOversKey] || 0) + 1;
-          const newOvers = Math.floor(newBalls / 6) + ((newBalls % 6) / 10);
-          return { ...prev, [currentOversKey]: newOvers };
-        });
+        if (isLegalDelivery) {
+          setBallsBowled((prev) => {
+            const newBalls = (prev[currentOversKey] || 0) + 1;
+            return { ...prev, [currentOversKey]: newBalls };
+          });
+          setOvers((prev) => {
+            const newBalls = (ballsBowled[currentOversKey] || 0) + 1;
+            const newOvers = Math.floor(newBalls / 6) + ((newBalls % 6) / 10);
+            return { ...prev, [currentOversKey]: newOvers };
+          });
 
-        const newBallsCount = currentBalls + 1;
-        if (newBallsCount % 6 === 0) {
-          setNewOverStarted(true);
-          setPreviousBowler(currentBowler);
-          setCurrentBowler(null);
-          swapEnds();
-          toast.info("Over completed.");
-          if (Math.floor(newBallsCount / 6) >= match.overs || wickets[currentOversKey] >= maxWickets) {
-            await checkInningsOrMatchEnd();
+          const newBallsCount = currentBalls + 1;
+          if (newBallsCount % 6 === 0) {
+            setNewOverStarted(true);
+            setPreviousBowler(currentBowler);
+            setCurrentBowler(null);
+            swapEnds();
+            toast.info("Over completed.");
+            if (Math.floor(newBallsCount / 6) >= match.overs || wickets[currentOversKey] >= maxWickets) {
+              await checkInningsOrMatchEnd();
+            }
+          } else {
+            setNewOverStarted(false);
           }
-        } else {
-          setNewOverStarted(false);
         }
+
+        await checkTargetAchieved();
       }
 
       updateMatchState({
@@ -425,10 +440,9 @@ const ScoreMatch = () => {
         oversBowled: overs,
         ballsBowled,
         dismissedBatsmen,
+        retiredHurtPlayers,
         matchStats,
       });
-
-      await checkTargetAchieved();
     } catch (err) {
       toast.error("Error saving score");
       console.error("Score error:", err);
@@ -441,9 +455,7 @@ const ScoreMatch = () => {
       return;
     }
     try {
-      console.log("Submitting captains:", captains);
       const response = await api.put(`/api/matches/${matchId}`, { captains });
-      console.log("Captains response:", response.data);
       setMatch((prev) => ({ ...prev, captains: response.data.captains || captains }));
       setCaptains(response.data.captains || captains);
       toast.success("Captains selected successfully!");
@@ -465,13 +477,6 @@ const ScoreMatch = () => {
         : match.teams.find(t => t._id !== tossWinner);
       const bowlingFirst = battingFirst._id === match.teams[0]._id ? match.teams[1] : match.teams[0];
 
-      console.log("Submitting toss:", { 
-        tossWinner, 
-        tossChoice, 
-        battingFirst: battingFirst._id, 
-        bowlingFirst: bowlingFirst._id 
-      });
-      
       const response = await api.put(`/api/matches/${matchId}`, {
         tossWinner,
         tossChoice,
@@ -479,7 +484,6 @@ const ScoreMatch = () => {
         bowlingTeam: bowlingFirst._id,
         status: "Ongoing",
       });
-      console.log("Toss response:", response.data);
 
       setBattingTeam(battingFirst);
       setBowlingTeam(bowlingFirst);
@@ -555,11 +559,6 @@ const ScoreMatch = () => {
         const newBattingTeam = bowlingTeam;
         const newBowlingTeam = battingTeam;
 
-        console.log(`Switching teams for Innings ${currentInnings + 1}:`, {
-          newBattingTeam: newBattingTeam._id,
-          newBowlingTeam: newBowlingTeam._id,
-        });
-
         setTarget(runsScored[`innings${currentInnings}`] + 1);
         setCurrentInnings(currentInnings + 1);
         setBattingTeam(newBattingTeam);
@@ -579,6 +578,7 @@ const ScoreMatch = () => {
           currentBowler: null,
           previousBowler: null,
           newOverStarted: true,
+          retiredHurtPlayers,
         });
       } else if (!winner) {
         const winnerTeam = determineWinner();
@@ -588,9 +588,58 @@ const ScoreMatch = () => {
           status: "Completed",
           winner: winnerTeam._id,
         });
-        updateMatchState({ winner: winnerTeam._id, status: "Completed" });
+        updateMatchState({ winner: winnerTeam._id, status: "Completed", retiredHurtPlayers });
         toast.success(`Match completed! Winner: ${winnerTeam.name}`);
       }
+    }
+  };
+
+  const handleCompleteInnings = async () => {
+    if (!window.confirm("Are you sure you want to complete this innings?")) return;
+    
+    const currentOversKey = `innings${currentInnings}`;
+    const totalInnings = match.format === "Test" ? 4 : 2;
+    
+    if (currentInnings < totalInnings) {
+      const newBattingTeam = bowlingTeam;
+      const newBowlingTeam = battingTeam;
+
+      setTarget(runsScored[`innings${currentInnings}`] + 1);
+      setCurrentInnings(currentInnings + 1);
+      setBattingTeam(newBattingTeam);
+      setBowlingTeam(newBowlingTeam);
+      setCurrentBatsmen([null, null]);
+      setCurrentBowler(null);
+      setPreviousBowler(null);
+      setNewOverStarted(true);
+
+      updateMatchState({
+        currentInnings: currentInnings + 1,
+        battingTeam: newBattingTeam._id,
+        bowlingTeam: newBowlingTeam._id,
+        target: runsScored[`innings${currentInnings}`] + 1,
+        currentBatsmen: [null, null],
+        currentBowler: null,
+        previousBowler: null,
+        newOverStarted: true,
+        retiredHurtPlayers,
+      });
+
+      toast.info(`Innings ${currentInnings} completed. Starting innings ${currentInnings + 1}.`);
+    } else {
+      const winnerTeam = determineWinner();
+      setWinner(winnerTeam);
+      setMatch((prev) => ({ ...prev, status: "Completed" }));
+      await api.put(`/api/matches/${matchId}`, {
+        status: "Completed",
+        winner: winnerTeam._id,
+      });
+      updateMatchState({ 
+        winner: winnerTeam._id, 
+        status: "Completed",
+        retiredHurtPlayers,
+      });
+      toast.success(`Match completed! Winner: ${winnerTeam.name}`);
     }
   };
 
@@ -609,7 +658,7 @@ const ScoreMatch = () => {
       if (runsScored[currentOversKey] === target) {
         setMatch((prev) => ({ ...prev, status: "Completed" }));
         await api.put(`/api/matches/${matchId}`, { status: "Completed" });
-        updateMatchState({ status: "Completed" });
+        updateMatchState({ status: "Completed", retiredHurtPlayers });
         toast.info("Match tied on this ball!");
       } else if (runsScored[currentOversKey] >= target) {
         setWinner(battingTeam);
@@ -618,7 +667,7 @@ const ScoreMatch = () => {
           status: "Completed",
           winner: battingTeam._id,
         });
-        updateMatchState({ winner: battingTeam._id, status: "Completed" });
+        updateMatchState({ winner: battingTeam._id, status: "Completed", retiredHurtPlayers });
         toast.success(`Target achieved! Match completed! Winner: ${battingTeam.name}`);
       }
     } else if (currentInnings === 2 && (currentWickets >= maxWickets || overs[currentOversKey] >= match.overs)) {
@@ -708,6 +757,7 @@ const ScoreMatch = () => {
         previousBowler: null,
         newOverStarted: true,
         dismissedBatsmen: { innings1: [], innings2: [] },
+        retiredHurtPlayers: { innings1: [], innings2: [] },
         matchStats: {
           innings1: { batting: {}, bowling: {}, fielding: {}, extras: { wides: {}, noBalls: {} } },
           innings2: { batting: {}, bowling: {}, fielding: {}, extras: { wides: {}, noBalls: {} } },
@@ -728,6 +778,7 @@ const ScoreMatch = () => {
       setNewOverStarted(true);
       setSelectedScores([]);
       setDismissedBatsmen(resetState.dismissedBatsmen);
+      setRetiredHurtPlayers(resetState.retiredHurtPlayers);
       setMatchStats(resetState.matchStats);
       updateMatchState(resetState);
       toast.success("All scores deleted! Match reset.");
@@ -786,7 +837,6 @@ const ScoreMatch = () => {
           </div>
         </div>
 
-        {/* Step 1: Captain Selection */}
         {match.status === "Scheduled" && Object.keys(captains).length < match.teams.length && (
           <div className="card mb-4">
             <div className="card-body">
@@ -821,7 +871,6 @@ const ScoreMatch = () => {
           </div>
         )}
 
-        {/* Step 2: Toss Decision */}
         {match.status === "Scheduled" && Object.keys(captains).length === match.teams.length && (
           <div className="card mb-4">
             <div className="card-body">
@@ -834,7 +883,6 @@ const ScoreMatch = () => {
                     value={tossWinner || ""}
                     onChange={(e) => {
                       const newTossWinner = e.target.value;
-                      console.log("Toss Winner selected:", newTossWinner);
                       setTossWinner(newTossWinner);
                       setTossChoice("");
                     }}
@@ -853,11 +901,7 @@ const ScoreMatch = () => {
                   <select
                     className="form-control"
                     value={tossChoice}
-                    onChange={(e) => {
-                      const newTossChoice = e.target.value;
-                      console.log("Toss Choice selected:", newTossChoice);
-                      setTossChoice(newTossChoice);
-                    }}
+                    onChange={(e) => setTossChoice(e.target.value)}
                     disabled={!tossWinner}
                   >
                     <option value="">Select Choice</option>
@@ -877,7 +921,6 @@ const ScoreMatch = () => {
           </div>
         )}
 
-        {/* Step 3: Scoring (Only Current Players and Score Ball) */}
         {match.status === "Ongoing" && battingTeam && bowlingTeam && (
           <>
             <div className="card mb-4">
@@ -911,6 +954,7 @@ const ScoreMatch = () => {
                         .map((player) => (
                           <option key={player._id} value={player._id}>
                             {getPlayerName(player._id)}
+                            {retiredHurtPlayers[`innings${currentInnings}`]?.includes(player._id) ? " (Retired Hurt)" : ""}
                           </option>
                         ))}
                     </select>
@@ -943,6 +987,7 @@ const ScoreMatch = () => {
                         .map((player) => (
                           <option key={player._id} value={player._id}>
                             {getPlayerName(player._id)}
+                            {retiredHurtPlayers[`innings${currentInnings}`]?.includes(player._id) ? " (Retired Hurt)" : ""}
                           </option>
                         ))}
                     </select>
@@ -990,9 +1035,7 @@ const ScoreMatch = () => {
                       key={`run-${run}`}
                       className="btn btn-primary score-btn"
                       onClick={() => handleScore("runs", run)}
-                      disabled={
-                        !currentBatsmen[0] || !currentBowler || match.status === "Completed"
-                      }
+                      disabled={!currentBatsmen[0] || !currentBowler || match.status === "Completed"}
                     >
                       {run}
                     </button>
@@ -1013,7 +1056,7 @@ const ScoreMatch = () => {
                   >
                     Wide + Wicket
                   </button>
-                  {[1, 2, 3, 4].map((extra) => (
+                  {[1, 2, 3, 4, 5, 6].map((extra) => (
                     <button
                       key={`wide-${extra}`}
                       className="btn btn-warning score-btn"
@@ -1039,7 +1082,7 @@ const ScoreMatch = () => {
                   >
                     No Ball + Wicket
                   </button>
-                  {[1, 2, 3, 4].map((extra) => (
+                  {[1, 2, 3, 4, 5, 6].map((extra) => (
                     <button
                       key={`noBall-${extra}`}
                       className="btn btn-danger score-btn"
@@ -1054,11 +1097,23 @@ const ScoreMatch = () => {
                   <button
                     className="btn btn-danger score-btn"
                     onClick={() => handleWicketClick()}
-                    disabled={
-                      !currentBatsmen[0] || !currentBowler || match.status === "Completed"
-                    }
+                    disabled={!currentBatsmen[0] || !currentBowler || match.status === "Completed"}
                   >
                     Wicket
+                  </button>
+                  <button
+                    className="btn btn-info score-btn"
+                    onClick={() => handleScore("retiredHurt")}
+                    disabled={!currentBatsmen[0] || match.status === "Completed"}
+                  >
+                    Retired Hurt
+                  </button>
+                  <button
+                    className="btn btn-warning score-btn"
+                    onClick={handleCompleteInnings}
+                    disabled={match.status === "Completed"}
+                  >
+                    Complete Innings
                   </button>
                 </div>
               </div>
@@ -1066,7 +1121,6 @@ const ScoreMatch = () => {
           </>
         )}
 
-        {/* Score Summary - Always Visible */}
         <div className="card mb-4">
           <div className="card-body">
             <h4 className="card-title">Score Summary</h4>
@@ -1164,7 +1218,6 @@ const ScoreMatch = () => {
           </div>
         </div>
 
-        {/* Player Statistics - Always Visible */}
         <div className="card mb-4">
           <div className="card-body">
             <h4 className="card-title">Player Statistics</h4>
@@ -1200,6 +1253,12 @@ const ScoreMatch = () => {
                                 matchStats[`innings${inning}`]?.extras.noBalls || {}
                               ).reduce((sum, val) => sum + val, 0)}
                               )
+                            </td>
+                          </tr>
+                          <tr>
+                            <td><strong>Retired Hurt</strong></td>
+                            <td colSpan="2">
+                              {retiredHurtPlayers[`innings${inning}`]?.map(id => getPlayerName(id)).join(", ") || "None"}
                             </td>
                           </tr>
                         </tbody>
@@ -1350,10 +1409,7 @@ const ScoreMatch = () => {
         </div>
 
         {wicketModal && (
-          <div
-            className="modal d-block bg-dark bg-opacity-50"
-            style={{ top: 0, left: 0, right: 0, bottom: 0 }}
-          >
+          <div className="modal d-block bg-dark bg-opacity-50" style={{ top: 0, left: 0, right: 0, bottom: 0 }}>
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content p-3">
                 <h4 className="text-center">Record Wicket</h4>
@@ -1362,15 +1418,22 @@ const ScoreMatch = () => {
                   <select
                     className="form-control"
                     value={wicketModal.wicketType || ""}
-                    onChange={(e) =>
-                      setWicketModal({ ...wicketModal, wicketType: e.target.value })
-                    }
+                    onChange={(e) => setWicketModal({ ...wicketModal, wicketType: e.target.value })}
                   >
                     <option value="">Select Wicket Type</option>
-                    <option value="bowled">Bowled</option>
-                    <option value="caught">Caught</option>
-                    <option value="stumped">Stumped</option>
-                    <option value="run out">Run Out</option>
+                    {wicketModal.ballType === "noBall" ? (
+                      <>
+                        <option value="run out">Run Out</option>
+                        <option value="stumped">Stumped</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="bowled">Bowled</option>
+                        <option value="caught">Caught</option>
+                        <option value="stumped">Stumped</option>
+                        <option value="run out">Run Out</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 {(wicketModal.wicketType === "caught" || wicketModal.wicketType === "run out") && (
@@ -1427,6 +1490,7 @@ const ScoreMatch = () => {
                           .map((player) => (
                             <option key={player._id} value={player._id}>
                               {getPlayerName(player._id)}
+                              {retiredHurtPlayers[`innings${currentInnings}`]?.includes(player._id) ? " (Retired Hurt)" : ""}
                             </option>
                           ))}
                       </select>
@@ -1475,10 +1539,7 @@ const ScoreMatch = () => {
         )}
 
         {editScore && (
-          <div
-            className="modal d-block bg-dark bg-opacity-50"
-            style={{ top: 0, left: 0, right: 0, bottom: 0 }}
-          >
+          <div className="modal d-block bg-dark bg-opacity-50" style={{ top: 0, left: 0, right: 0, bottom: 0 }}>
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content p-3">
                 <h4 className="text-center">Edit Score</h4>

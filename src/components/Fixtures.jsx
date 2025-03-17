@@ -4,6 +4,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import Header from "./Header";
 import api from "../utility/axiosInterceptor.js";
 import { motion } from "framer-motion";
+import LoadingSpinner from "./LoadingSpinner";
 
 function Fixtures() {
   const [matches, setMatches] = useState([]);
@@ -12,18 +13,19 @@ function Fixtures() {
   const [filteredMatches, setFilteredMatches] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState("ALL TEAMS");
   const [selectedTournament, setSelectedTournament] = useState("ALL TOURNAMENTS");
-  const [activeTab, setActiveTab] = useState("Series"); // Default to "Series" tab
-  const [visibleRows, setVisibleRows] = useState(2); // Show 2 rows by default (6 matches)
+  const [activeTab, setActiveTab] = useState("Series");
+  const [visibleRows, setVisibleRows] = useState(2);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setIsLoading(true);
         const matchesResponse = await api.get("/api/matches");
         const sortedMatches = matchesResponse.data.sort((a, b) => {
-          // Prioritize Scheduled matches first
           if (a.status === "Scheduled" && b.status !== "Scheduled") return -1;
           if (a.status !== "Scheduled" && b.status === "Scheduled") return 1;
-          return new Date(a.startTime) - new Date(b.startTime); // Then sort by date
+          return new Date(a.startTime) - new Date(b.startTime);
         });
         setMatches(sortedMatches);
         setFilteredMatches(sortedMatches);
@@ -35,17 +37,19 @@ function Fixtures() {
         setTournaments(tournamentsResponse.data);
       } catch (error) {
         console.error("Error fetching data:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
     fetchData();
   }, []);
 
-  // Filter matches by selected team and tournament
   useEffect(() => {
     let filtered = matches;
 
     if (selectedTeam !== "ALL TEAMS") {
+      setIsLoading(true);
       filtered = filtered.filter((match) =>
         match.teams.some((team) => team.name === selectedTeam)
       );
@@ -58,6 +62,7 @@ function Fixtures() {
     }
 
     setFilteredMatches(filtered);
+    setIsLoading(false);
   }, [selectedTeam, selectedTournament, activeTab, matches]);
 
   const formatTime = (dateString) => {
@@ -88,12 +93,12 @@ function Fixtures() {
 
   const handleTeamFilterChange = (e) => {
     setSelectedTeam(e.target.value);
-    setVisibleRows(2); // Reset visible rows when filter changes
+    setVisibleRows(2);
   };
 
   const handleTournamentFilterChange = (e) => {
     setSelectedTournament(e.target.value);
-    setVisibleRows(2); // Reset visible rows when filter changes
+    setVisibleRows(2);
   };
 
   const renderMatches = () => {
@@ -257,9 +262,10 @@ function Fixtures() {
   return (
     <div 
       className="d-flex flex-column min-vh-100" 
-      style={{ background: "linear-gradient(to bottom, #f8f9fa 0%, #e9ecef 100%)" }}
+      style={{ background: "linear-gradient(to bottom, #f8f9fa 0%, #e9ecef 100%)", position: "relative" }}
     >
       <Header />
+      {isLoading && <LoadingSpinner size="large" message="Loading Fixtures..." />}
       <div className="container py-5 flex-grow-1">
         <motion.div 
           initial={{ y: -50, opacity: 0 }}
@@ -276,7 +282,7 @@ function Fixtures() {
                   className={`nav-link border-0 bg-transparent position-relative ${activeTab === tab ? "active" : ""}`}
                   onClick={() => {
                     setActiveTab(tab);
-                    setVisibleRows(2); // Reset visible rows when tab changes
+                    setVisibleRows(2);
                   }}
                   style={{
                     color: activeTab === tab ? "var(--primary-yellow)" : "var(--text-muted)",
@@ -353,7 +359,6 @@ function Fixtures() {
             </ul>
           </div>
         </motion.div>
-
         {renderMatches()}
       </div>
     </div>

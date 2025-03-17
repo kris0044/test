@@ -198,17 +198,6 @@ function Dashboard() {
           </div>
         </div>
 
-        <div className="dashboard-footer">
-          <button
-            className="logout-btn"
-            onClick={() => {
-              localStorage.clear();
-              navigate("/login");
-            }}
-          >
-            Logout
-          </button>
-        </div>
       </div>
     </AdminLayout>
   );
