@@ -9,21 +9,21 @@ const {
   getTeamMatches,
   getHeadToHeadMatches,
 } = require("../controllers/matchController");
-const authMiddleware = require("../middleware/authMiddleware"); // Corrected typo in import
+const authMiddleware = require("../middleware/authMiddleware"); 
 const router = express.Router();
 
-// Admin-only routes
-router.post("/", authMiddleware, createMatch);          // Create match (admin only)
-router.put("/:id", authMiddleware, updateMatch);        // Update match (admin only)
-router.delete("/:id", authMiddleware, deleteMatch);     // Delete match (admin only)
 
-// Protected routes (admin or assigned scorer)
-router.put("/:id/state", authMiddleware, updateMatchState); // Update match state (admin or scorer)
+router.post("/", authMiddleware, createMatch);          
+router.put("/:id", authMiddleware, updateMatch);        
+router.delete("/:id", authMiddleware, deleteMatch);     
 
-// Public or less restricted routes
-router.get("/", getMatches);                            // Get all matches
-router.get("/team/:teamId", getTeamMatches);            // Get team matches
-router.get("/head-to-head", getHeadToHeadMatches);      // Get head-to-head matches
-router.get("/:id", getMatchById);                       // Get match by ID
+
+router.put("/:id/state", authMiddleware, updateMatchState); 
+
+
+router.get("/", getMatches);                            
+router.get("/team/:teamId", getTeamMatches);            
+router.get("/head-to-head", getHeadToHeadMatches);      
+router.get("/:id", getMatchById);                       
 
 module.exports = router;

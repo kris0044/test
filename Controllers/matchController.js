@@ -88,8 +88,8 @@ exports.getMatches = async (req, res) => {
 // Update match (Admin only)
 exports.updateMatch = async (req, res) => {
   try {
-    if (!req.user || req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only admins can update matches" });
+    if (!req.user || (req.user.role !== "admin" && req.user.role !== "scorer")) {
+      return res.status(403).json({ error: "Only admins or scorers can update matches" });
     }
 
     const match = await Match.findById(req.params.id);
@@ -109,12 +109,15 @@ exports.updateMatch = async (req, res) => {
       }
     }
 
-    let scorerId = assignedScorer === "" || assignedScorer === undefined ? null : assignedScorer;
+    let scorerId = assignedScorer === "" || assignedScorer === undefined ? match.assignedScorer : assignedScorer;
     if (scorerId) {
       const scorer = await User.findById(scorerId);
       if (!scorer || scorer.role !== "scorer") {
         return res.status(400).json({ error: "Assigned scorer must have the 'scorer' role" });
       }
+      match.assignedScorer = scorerId;
+    } else if (assignedScorer === null) {
+      match.assignedScorer = null; // Explicitly allow unassignment
     }
 
     const updatedMatch = await Match.findByIdAndUpdate(
@@ -166,6 +169,7 @@ exports.updateMatchState = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
+    // Fix authorization: Allow admin OR assigned scorer
     const isAdmin = user.role === "admin";
     const isAssignedScorer = match.assignedScorer && match.assignedScorer.toString() === user.id.toString();
 
@@ -176,7 +180,7 @@ exports.updateMatchState = async (req, res) => {
     const updatedMatch = await Match.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
-      { new: true }
+      { new: true, runValidators: true }
     )
       .populate("teams", "name")
       .populate("tournament", "name");
@@ -185,18 +189,18 @@ exports.updateMatchState = async (req, res) => {
       return res.status(404).json({ message: "Match not found" });
     }
 
-    // Emit update via Socket.IO (if applicable)
+    // Emit update via Socket.IO if available
     const emitMatchUpdate = req.app.get("emitMatchUpdate");
     if (emitMatchUpdate) {
       emitMatchUpdate(updatedMatch);
     } else {
-      console.error("emitMatchUpdate function not found on req.app");
+      console.warn("emitMatchUpdate function not found on req.app");
     }
 
     res.json(updatedMatch);
   } catch (error) {
     console.error("Error updating match state:", error);
-    res.status(500).json({ error: "Error updating match state" });
+    res.status(500).json({ error: "Error updating match state", details: error.message });
   }
 };
 
