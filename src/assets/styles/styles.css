@@ -429,14 +429,20 @@
   gap: 8px;
 }
 
-.load-more-btn:hover {
-  background: #0056b3;
-  transform: translateY(-2px);
-}
 
 .load-more-btn:disabled {
   background: #6c757d;
   cursor: not-allowed;
+}
+.table-responsive::-webkit-scrollbar {
+  height: 8px;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
 
 /* Animation for fade-in */
@@ -790,10 +796,7 @@
   transition: color 0.3s ease;
 }
 
-.load-more-btn:hover {
-  color: #0056b3; /* Darker blue on hover */
-  text-decoration: underline;
-}
+
 /* Styles for Fixtures Page */
 .nav-tabs .nav-link {
   color: #6c757d;

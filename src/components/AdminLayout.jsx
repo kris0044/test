@@ -67,6 +67,12 @@ const AdminLayout = ({ children }) => {
             <Link to="/CreateMatch" className="nav-link text-white">Matches</Link>
           </li>
           <li className="nav-item">
+            <Link to="/venues" className="nav-link text-white">Venues</Link>
+          </li>
+          <li className="nav-item">
+            <Link to="/umpires" className="nav-link text-white">Umpires</Link>
+          </li>
+          <li className="nav-item">
             <Link to="/AdminTournaments" className="nav-link text-white">Tournaments</Link>
           </li>
           <li className="nav-item">

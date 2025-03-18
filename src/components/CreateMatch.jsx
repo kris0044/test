@@ -10,25 +10,31 @@ const CreateMatch = () => {
   const [teams, setTeams] = useState([]);
   const [tournaments, setTournaments] = useState([]);
   const [scorers, setScorers] = useState([]);
+  const [umpires, setUmpires] = useState([]);
+  const [venues, setVenues] = useState([]);
+  const [matchTypes, setMatchTypes] = useState([]); // New state for match types
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedTournament, setSelectedTournament] = useState("");
   const [overs, setOvers] = useState("");
   const [assignedScorer, setAssignedScorer] = useState("");
+  const [selectedUmpires, setSelectedUmpires] = useState([]);
+  const [selectedVenue, setSelectedVenue] = useState("");
+  const [referee, setReferee] = useState("");
+  const [matchType, setMatchType] = useState(""); // New state for match type in create form
   const [matches, setMatches] = useState([]);
   const [editMatch, setEditMatch] = useState(null);
   const [editData, setEditData] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [userRole, setUserRole] = useState(null); // Track user role
-  const [userId, setUserId] = useState(null); // Track user ID for scorer filtering
+  const [userRole, setUserRole] = useState(null);
+  const [userId, setUserId] = useState(null);
   const matchesPerPage = 5;
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Decode JWT to get role and id
         const token = localStorage.getItem("token");
         if (!token) {
           navigate("/login");
@@ -38,18 +44,28 @@ const CreateMatch = () => {
         setUserRole(decoded.role);
         setUserId(decoded.id);
 
-        const [teamsRes, tournamentsRes, matchesRes, scorersRes] = await Promise.all([
+        const [teamsRes, tournamentsRes, matchesRes, scorersRes, umpiresRes, venuesRes] = await Promise.all([
           api.get("/api/teams"),
           api.get("/api/tournaments"),
           api.get("/api/matches"),
-          api.get("/api/users/users?role=scorer"), // Fixed endpoint (removed extra /users)
+          api.get("/api/users/users?role=scorer"),
+          api.get("/api/umpires"),
+          api.get("/api/venues"),
+          // api.get("/api/match-types"), // Uncomment if you have an API endpoint
         ]);
+
         setTeams(teamsRes.data);
         setTournaments(tournamentsRes.data);
         setScorers(scorersRes.data);
-        console.log("Scorers fetched:", scorersRes.data); // Debug scorers
+        setUmpires(umpiresRes.data);
+        setVenues(venuesRes.data);
 
-        // Filter matches for scorers
+        // If you have an API for match types, set it here
+        // setMatchTypes(matchTypesRes.data);
+
+        // Static match types (if no API)
+        setMatchTypes(["League", "Semi-Final", "Final"]);
+
         if (decoded.role === "scorer") {
           const filteredMatches = matchesRes.data.filter(
             (match) => match.assignedScorer?._id === decoded.id
@@ -84,12 +100,23 @@ const CreateMatch = () => {
   };
 
   const handleTeamChange = (teamId) => {
-    if (userRole !== "admin") return; // Disable team selection for non-admins
+    if (userRole !== "admin") return;
     setSelectedTeams((prev) =>
       prev.includes(teamId)
         ? prev.filter((id) => id !== teamId)
         : prev.length < 2
         ? [...prev, teamId]
+        : prev
+    );
+  };
+
+  const handleUmpireChange = (umpireId) => {
+    if (userRole !== "admin") return;
+    setSelectedUmpires((prev) =>
+      prev.includes(umpireId)
+        ? prev.filter((id) => id !== umpireId)
+        : prev.length < 2
+        ? [...prev, umpireId]
         : prev
     );
   };
@@ -100,22 +127,33 @@ const CreateMatch = () => {
     if (selectedTeams.length !== 2) return toast.error("Select exactly 2 teams.");
     if (!overs || overs < 1) return toast.error("Enter valid overs.");
     if (!selectedTournament) return toast.error("Select a tournament.");
+    if (!selectedVenue) return toast.error("Select a venue.");
+    if (!matchType) return toast.error("Select a match type."); // Validation for match type
 
     const scorerId = assignedScorer === "" ? null : assignedScorer;
+    const payload = {
+      teams: selectedTeams,
+      overs,
+      tournament: selectedTournament,
+      assignedScorer: scorerId,
+      umpires: selectedUmpires,
+      venue: selectedVenue,
+      referee: referee || null,
+      matchType, // Add match type to payload
+    };
 
     api
-      .post("/api/matches", {
-        teams: selectedTeams,
-        overs,
-        tournament: selectedTournament,
-        assignedScorer: scorerId,
-      })
+      .post("/api/matches", payload)
       .then(() => {
         toast.success("Match created!");
         setSelectedTeams([]);
         setOvers("");
         setSelectedTournament("");
         setAssignedScorer("");
+        setSelectedUmpires([]);
+        setSelectedVenue("");
+        setReferee("");
+        setMatchType(""); // Reset match type
         setShowCreateModal(false);
         fetchMatches();
       })
@@ -143,6 +181,10 @@ const CreateMatch = () => {
     if (editData.assignedScorer) {
       updatePayload.assignedScorer = editData.assignedScorer === "" ? null : editData.assignedScorer;
     }
+    if (editData.umpires) updatePayload.umpires = editData.umpires;
+    if (editData.venue) updatePayload.venue = editData.venue;
+    if (editData.referee !== undefined) updatePayload.referee = editData.referee || null;
+    if (editData.matchType) updatePayload.matchType = editData.matchType; // Add match type to update payload
 
     api
       .put(`/api/matches/${id}`, updatePayload)
@@ -185,12 +227,16 @@ const CreateMatch = () => {
 
   const filteredMatches = matches.filter((match) =>
     [
-      match.teams[0]?.name,
-      match.teams[1]?.name,
-      match.tournament?.name,
-      match.overs.toString(),
-      match.status,
+      match.teams[0]?.name || "",
+      match.teams[1]?.name || "",
+      match.tournament?.name || "",
+      match.overs?.toString() || "",
+      match.status || "",
       match.assignedScorer?.name || "",
+      match.umpires?.map((u) => u.name).join(" ") || "",
+      match.venue?.name || "",
+      match.referee || "",
+      match.matchType || "", // Include match type in search
     ]
       .join(" ")
       .toLowerCase()
@@ -224,82 +270,100 @@ const CreateMatch = () => {
           <button
             className="btn btn-primary"
             onClick={() => setShowCreateModal(true)}
-            disabled={userRole !== "admin"} // Disable for non-admins
+            disabled={userRole !== "admin"}
           >
             Create Match
           </button>
         </div>
 
-        <table className="table table-bordered mt-3">
-          <thead className="table-dark">
-            <tr>
-              <th>#</th>
-              <th>Team 1</th>
-              <th>Team 2</th>
-              <th>Tournament</th>
-              <th>Overs</th>
-              <th>Status</th>
-              <th>Scorer</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {currentMatches.length > 0 ? (
-              currentMatches.map((match, index) => (
-                <tr key={match._id}>
-                  <td>{indexOfFirstMatch + index + 1}</td>
-                  <td>{match.teams[0]?.name || "N/A"}</td>
-                  <td>{match.teams[1]?.name || "N/A"}</td>
-                  <td>{match.tournament?.name || "N/A"}</td>
-                  <td>{match.overs}</td>
-                  <td>{match.status}</td>
-                  <td>{match.assignedScorer?.name || "Not Assigned"}</td>
-                  <td>
-                    <button
-                      className="btn btn-info btn-sm me-2"
-                      onClick={() => handleView(match)}
-                    >
-                      {userRole === "scorer" ? "Score" : "👁 View"}
-                    </button>
-                    <button
-                      className="btn btn-warning btn-sm me-2"
-                      onClick={() => {
-                        setEditMatch(match._id);
-                        setEditData({
-                          overs: match.overs,
-                          status: match.status,
-                          battingTeam: match.battingTeam?._id,
-                          bowlingTeam: match.bowlingTeam?._id,
-                          runsScored: match.runsScored,
-                          wickets: match.wickets,
-                          oversBowled: match.oversBowled,
-                          target: match.target,
-                          assignedScorer: match.assignedScorer?._id || "",
-                        });
-                      }}
-                      disabled={userRole !== "admin"} // Disable for non-admins
-                    >
-                      ✏ Edit
-                    </button>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => handleDelete(match._id)}
-                      disabled={userRole !== "admin"} // Disable for non-admins
-                    >
-                      ❌ Delete
-                    </button>
+        <div style={{ overflowX: "auto", marginBottom: "20px" }}>
+          <table className="table table-bordered mt-3" style={{ minWidth: "1200px" }}>
+            <thead className="table-dark">
+              <tr>
+                <th>#</th>
+                <th>Team 1</th>
+                <th>Team 2</th>
+                <th>Tournament</th>
+                <th>Overs</th>
+                <th>Type</th> {/* New column for match type */}
+                <th>Status</th>
+                <th>Scorer</th>
+                <th>Umpires</th>
+                <th>Venue</th>
+                <th>Referee</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentMatches.length > 0 ? (
+                currentMatches.map((match, index) => (
+                  <tr key={match._id}>
+                    <td>{indexOfFirstMatch + index + 1}</td>
+                    <td>{match.teams[0]?.name || "N/A"}</td>
+                    <td>{match.teams[1]?.name || "N/A"}</td>
+                    <td>{match.tournament?.name || "N/A"}</td>
+                    <td>{match.overs || "N/A"}</td>
+                    <td>{match.matchType || "N/A"}</td> {/* Display match type */}
+                    <td>{match.status || "N/A"}</td>
+                    <td>{match.assignedScorer?.name || "Not Assigned"}</td>
+                    <td>
+                      {match.umpires?.length > 0
+                        ? match.umpires.map((umpire) => umpire.name).join(", ")
+                        : "Not Assigned"}
+                    </td>
+                    <td>{match.venue?.name || "N/A"}</td>
+                    <td>{match.referee || "N/A"}</td>
+                    <td>
+                      <button
+                        className="btn btn-info btn-sm me-2"
+                        onClick={() => handleView(match)}
+                      >
+                        {userRole === "scorer" ? "Score" : "👁 View"}
+                      </button>
+                      <button
+                        className="btn btn-warning btn-sm me-2"
+                        onClick={() => {
+                          setEditMatch(match._id);
+                          setEditData({
+                            overs: match.overs,
+                            status: match.status,
+                            battingTeam: match.battingTeam?._id,
+                            bowlingTeam: match.bowlingTeam?._id,
+                            runsScored: match.runsScored,
+                            wickets: match.wickets,
+                            oversBowled: match.oversBowled,
+                            target: match.target,
+                            assignedScorer: match.assignedScorer?._id || "",
+                            umpires: match.umpires?.map((u) => u._id) || [],
+                            venue: match.venue?._id,
+                            referee: match.referee,
+                            matchType: match.matchType || "", // Include match type in edit data
+                          });
+                        }}
+                        disabled={userRole !== "admin"}
+                      >
+                        ✏ Edit
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleDelete(match._id)}
+                        disabled={userRole !== "admin"}
+                      >
+                        ❌ Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="12" className="text-center">
+                    No matches found
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="8" className="text-center">
-                  No matches found
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {totalPages > 1 && (
           <div className="d-flex justify-content-between align-items-center mt-3">
@@ -339,7 +403,7 @@ const CreateMatch = () => {
                       value={selectedTournament}
                       onChange={(e) => setSelectedTournament(e.target.value)}
                       required
-                      disabled={userRole !== "admin"} // Disable for non-admins
+                      disabled={userRole !== "admin"}
                     >
                       <option value="">Select a Tournament</option>
                       {tournaments.map((tournament) => (
@@ -362,7 +426,7 @@ const CreateMatch = () => {
                               : "btn-outline-secondary"
                           }`}
                           onClick={() => handleTeamChange(team._id)}
-                          disabled={userRole !== "admin"} // Disable for non-admins
+                          disabled={userRole !== "admin"}
                         >
                           {team.name}
                         </button>
@@ -379,8 +443,25 @@ const CreateMatch = () => {
                       placeholder="Enter overs"
                       min="1"
                       required
-                      disabled={userRole !== "admin"} // Disable for non-admins
+                      disabled={userRole !== "admin"}
                     />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Match Type:</label>
+                    <select
+                      className="form-control"
+                      value={matchType}
+                      onChange={(e) => setMatchType(e.target.value)}
+                      required
+                      disabled={userRole !== "admin"}
+                    >
+                      <option value="">Select Match Type</option>
+                      {matchTypes.map((type, index) => (
+                        <option key={index} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="mb-3">
                     <label className="form-label fw-bold">Assign Scorer:</label>
@@ -388,7 +469,7 @@ const CreateMatch = () => {
                       className="form-control"
                       value={assignedScorer}
                       onChange={(e) => setAssignedScorer(e.target.value)}
-                      disabled={userRole !== "admin"} // Disable for non-admins
+                      disabled={userRole !== "admin"}
                     >
                       <option value="">Select a Scorer (Optional)</option>
                       {scorers.map((scorer) => (
@@ -398,10 +479,58 @@ const CreateMatch = () => {
                       ))}
                     </select>
                   </div>
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Select Umpires (up to 2):</label>
+                    <div className="d-flex flex-wrap gap-2">
+                      {umpires.map((umpire) => (
+                        <button
+                          key={umpire._id}
+                          type="button"
+                          className={`btn ${
+                            selectedUmpires.includes(umpire._id)
+                              ? "btn-primary"
+                              : "btn-outline-secondary"
+                          }`}
+                          onClick={() => handleUmpireChange(umpire._id)}
+                          disabled={userRole !== "admin"}
+                        >
+                          {umpire.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Select Venue:</label>
+                    <select
+                      className="form-control"
+                      value={selectedVenue}
+                      onChange={(e) => setSelectedVenue(e.target.value)}
+                      required
+                      disabled={userRole !== "admin"}
+                    >
+                      <option value="">Select a Venue</option>
+                      {venues.map((venue) => (
+                        <option key={venue._id} value={venue._id}>
+                          {venue.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Referee:</label>
+                    <input
+                      type="text"
+                      value={referee}
+                      onChange={(e) => setReferee(e.target.value)}
+                      className="form-control"
+                      placeholder="Enter referee name (optional)"
+                      disabled={userRole !== "admin"}
+                    />
+                  </div>
                   <button
                     type="submit"
                     className="btn btn-success w-100"
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   >
                     Create Match
                   </button>
@@ -414,6 +543,10 @@ const CreateMatch = () => {
                       setOvers("");
                       setSelectedTournament("");
                       setAssignedScorer("");
+                      setSelectedUmpires([]);
+                      setSelectedVenue("");
+                      setReferee("");
+                      setMatchType("");
                     }}
                   >
                     Cancel
@@ -440,8 +573,24 @@ const CreateMatch = () => {
                     value={editData.overs || ""}
                     onChange={(e) => setEditData({ ...editData, overs: e.target.value })}
                     min="1"
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Match Type:</label>
+                  <select
+                    className="form-control"
+                    value={editData.matchType || ""}
+                    onChange={(e) => setEditData({ ...editData, matchType: e.target.value })}
+                    disabled={userRole !== "admin"}
+                  >
+                    <option value="">Select Match Type</option>
+                    {matchTypes.map((type, index) => (
+                      <option key={index} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="mb-3">
                   <label className="form-label">Status:</label>
@@ -449,7 +598,7 @@ const CreateMatch = () => {
                     className="form-control"
                     value={editData.status || ""}
                     onChange={(e) => setEditData({ ...editData, status: e.target.value })}
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   >
                     <option value="">Select Status</option>
                     <option value="Scheduled">Scheduled</option>
@@ -463,7 +612,7 @@ const CreateMatch = () => {
                     className="form-control"
                     value={editData.battingTeam || ""}
                     onChange={(e) => setEditData({ ...editData, battingTeam: e.target.value })}
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   >
                     <option value="">Select Batting Team</option>
                     {teams.map((team) => (
@@ -479,7 +628,7 @@ const CreateMatch = () => {
                     className="form-control"
                     value={editData.bowlingTeam || ""}
                     onChange={(e) => setEditData({ ...editData, bowlingTeam: e.target.value })}
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   >
                     <option value="">Select Bowling Team</option>
                     {teams.map((team) => (
@@ -501,7 +650,7 @@ const CreateMatch = () => {
                         runsScored: { ...editData.runsScored, innings1: Number(e.target.value) },
                       })
                     }
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   />
                 </div>
                 <div className="mb-3">
@@ -516,7 +665,7 @@ const CreateMatch = () => {
                         runsScored: { ...editData.runsScored, innings2: Number(e.target.value) },
                       })
                     }
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   />
                 </div>
                 <div className="mb-3">
@@ -531,7 +680,7 @@ const CreateMatch = () => {
                         wickets: { ...editData.wickets, innings1: Number(e.target.value) },
                       })
                     }
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   />
                 </div>
                 <div className="mb-3">
@@ -546,7 +695,7 @@ const CreateMatch = () => {
                         wickets: { ...editData.wickets, innings2: Number(e.target.value) },
                       })
                     }
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   />
                 </div>
                 <div className="mb-3">
@@ -562,7 +711,7 @@ const CreateMatch = () => {
                         oversBowled: { ...editData.oversBowled, innings1: Number(e.target.value) },
                       })
                     }
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   />
                 </div>
                 <div className="mb-3">
@@ -578,7 +727,7 @@ const CreateMatch = () => {
                         oversBowled: { ...editData.oversBowled, innings2: Number(e.target.value) },
                       })
                     }
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   />
                 </div>
                 <div className="mb-3">
@@ -588,7 +737,7 @@ const CreateMatch = () => {
                     className="form-control"
                     value={editData.target || ""}
                     onChange={(e) => setEditData({ ...editData, target: Number(e.target.value) })}
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   />
                 </div>
                 <div className="mb-3">
@@ -599,7 +748,7 @@ const CreateMatch = () => {
                     onChange={(e) =>
                       setEditData({ ...editData, assignedScorer: e.target.value })
                     }
-                    disabled={userRole !== "admin"} // Disable for non-admins
+                    disabled={userRole !== "admin"}
                   >
                     <option value="">Select a Scorer (Optional)</option>
                     {scorers.map((scorer) => (
@@ -609,10 +758,66 @@ const CreateMatch = () => {
                     ))}
                   </select>
                 </div>
+                <div className="mb-3">
+                  <label className="form-label">Umpires:</label>
+                  <div className="d-flex flex-wrap gap-2">
+                    {umpires.map((umpire) => (
+                      <button
+                        key={umpire._id}
+                        type="button"
+                        className={`btn ${
+                          editData.umpires?.includes(umpire._id)
+                            ? "btn-primary"
+                            : "btn-outline-secondary"
+                        }`}
+                        onClick={() =>
+                          setEditData({
+                            ...editData,
+                            umpires: editData.umpires?.includes(umpire._id)
+                              ? editData.umpires.filter((id) => id !== umpire._id)
+                              : editData.umpires?.length < 2
+                              ? [...(editData.umpires || []), umpire._id]
+                              : editData.umpires,
+                          })
+                        }
+                        disabled={userRole !== "admin"}
+                      >
+                        {umpire.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Venue:</label>
+                  <select
+                    className="form-control"
+                    value={editData.venue || ""}
+                    onChange={(e) => setEditData({ ...editData, venue: e.target.value })}
+                    disabled={userRole !== "admin"}
+                  >
+                    <option value="">Select a Venue</option>
+                    {venues.map((venue) => (
+                      <option key={venue._id} value={venue._id}>
+                        {venue.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Referee:</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={editData.referee || ""}
+                    onChange={(e) => setEditData({ ...editData, referee: e.target.value })}
+                    placeholder="Enter referee name (optional)"
+                    disabled={userRole !== "admin"}
+                  />
+                </div>
                 <button
                   className="btn btn-success w-100"
                   onClick={() => handleUpdate(editMatch)}
-                  disabled={userRole !== "admin"} // Disable for non-admins
+                  disabled={userRole !== "admin"}
                 >
                   Save
                 </button>

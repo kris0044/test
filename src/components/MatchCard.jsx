@@ -73,7 +73,7 @@ function MatchCard({ match, onClick }) {
       className={`match-card ${isHovered ? "match-card-hovered" : ""}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={onClick} // Assuming parent component passes an onClick handler
+      onClick={onClick}
     >
       <div className="match-card-header">
         <div className="match-info">
@@ -81,7 +81,7 @@ function MatchCard({ match, onClick }) {
             {match.tournament?.name || "Tournament Name"}
           </h5>
           <p className="match-details">
-            {match.matchType || "Match Type"} • {match.venue || "Venue TBD"}
+            {match.matchType || "Match Type"} • {match.venue?.name || "Venue TBD"}
           </p>
         </div>
         <span className={`status-badge bg-${statusStyle.color}`}>
@@ -125,8 +125,6 @@ function MatchCard({ match, onClick }) {
           <p className="match-result text-success">{getWinningMargin()}</p>
         )}
       </div>
-
-    
     </div>
   );
 }

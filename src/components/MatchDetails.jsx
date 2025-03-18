@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import io from "socket.io-client";
-import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
 import Header from "./Header";
 import { FaUserCircle, FaCalendarAlt, FaMapMarkerAlt } from "react-icons/fa";
-import "../assets/styles/styles.css"; // Ensure this points to styles.css
+import "../assets/styles/styles.css";
 import api from "../utility/axiosInterceptor.js";
 
 const socket = io(api.defaults.baseURL);
@@ -20,14 +19,14 @@ function MatchDetails() {
   const [loading, setLoading] = useState(true);
   const [selectedTeam, setSelectedTeam] = useState(0);
   const [activeTab, setActiveTab] = useState("Live"); // Default to "Live" for testing
-  const [selectedPlayingTeam, setSelectedPlayingTeam] = useState(0); // For toggling Playing XI teams
+  const [selectedPlayingTeam, setSelectedPlayingTeam] = useState(0);
 
   useEffect(() => {
     const fetchMatchAndPlayers = async () => {
       try {
         setLoading(true);
         const matchResponse = await api.get(`/api/matches/${matchId}`, {
-          params: { populate: "teams winner" },
+          params: { populate: "teams winner umpires venue" }, // Added umpires and venue to populate
         });
         const matchData = matchResponse.data || {};
         setMatch(matchData);
@@ -233,8 +232,6 @@ function MatchDetails() {
     return { total: wides + noBalls, wides, noBalls, byes: 0, legByes: 0 };
   };
 
-  const totalInnings = match.format === "Test" ? 4 : 2;
-
   const getBattingTeamIndex = (inning) => {
     const tossWinnerIndex = match.teams.findIndex((team) => team._id === match.tossWinner);
     const otherTeamIndex = tossWinnerIndex === 0 ? 1 : 0;
@@ -301,24 +298,16 @@ function MatchDetails() {
     let currentBatsmen = [];
     let partnershipRuns = 0;
     let partnershipBalls = 0;
-    let allBatsmen = new Set(); // Track all batsmen who have batted in the innings
 
     inningsScores.forEach((score, index) => {
       const batsmanId = typeof score.batsman === "string" ? score.batsman : score.batsman?._id;
 
-      // Add batsman to the list of all batsmen who have batted
-      if (batsmanId) {
-        allBatsmen.add(batsmanId);
-      }
-
-      // Initialize the first two batsmen
       if (currentBatsmen.length < 2 && batsmanId) {
         if (!currentBatsmen.includes(batsmanId)) {
           currentBatsmen.push(batsmanId);
         }
       }
 
-      // Accumulate runs and balls for the current partnership
       if (currentBatsmen.length === 2) {
         partnershipRuns += score.runs || 0;
         if (score.ballType === "legal") {
@@ -326,23 +315,19 @@ function MatchDetails() {
         }
       }
 
-      // Handle a wicket falling
       if (score.wicket && score.outBatsman) {
         const outBatsmanId =
           typeof score.outBatsman === "string" ? score.outBatsman : score.outBatsman._id;
 
         if (currentBatsmen.includes(outBatsmanId) && currentBatsmen.length === 2) {
-          // Record the partnership
           partnerships.push({
             batsmen: [...currentBatsmen],
             runs: partnershipRuns,
             balls: partnershipBalls,
           });
 
-          // Remove the dismissed batsman
           currentBatsmen = currentBatsmen.filter((id) => id !== outBatsmanId);
 
-          // Find the next batsman to come in
           const remainingScores = inningsScores.slice(index + 1);
           const nextBatsman = remainingScores.find(
             (s) =>
@@ -361,13 +346,11 @@ function MatchDetails() {
             }
           }
 
-          // Reset partnership stats
           partnershipRuns = 0;
           partnershipBalls = 0;
         }
       }
 
-      // Record the last partnership if the innings ends
       if (index === inningsScores.length - 1 && currentBatsmen.length === 2 && partnershipRuns > 0) {
         partnerships.push({
           batsmen: [...currentBatsmen],
@@ -487,9 +470,6 @@ function MatchDetails() {
       (parseFloat(currentRunRate) + 1.0).toFixed(2),
     ];
 
-    const totalOvers = 50;
-    const remainingOvers = totalOvers - oversBowled;
-
     const projectionPoints = [];
     if (oversBowled < 20) projectionPoints.push(20);
     if (oversBowled < 30) projectionPoints.push(30);
@@ -572,7 +552,7 @@ function MatchDetails() {
     <div className="d-flex flex-column min-vh-100 match-details-container">
       <Header />
       <div className="container py-4">
-        <nav className="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <nav className="navbar navbar-expand-lg navbar-dark mb-4">
           <div className="container-fluid">
             <ul className="nav nav-tabs">
               <li className="nav-item">
@@ -731,7 +711,6 @@ function MatchDetails() {
                           {extras.noBalls || 0}, p 0)
                         </p>
 
-                        {/* Fall of Wickets Section */}
                         <h3 className="h6 mt-3">Fall of Wickets</h3>
                         {fallOfWickets(inning).length > 0 ? (
                           <table className="table table-bordered table-sm match-table">
@@ -758,7 +737,6 @@ function MatchDetails() {
                           <p className="small">No wickets yet for Inning {inning}</p>
                         )}
 
-                        {/* Partnerships Section */}
                         <h3 className="h6 mt-3">Partnerships</h3>
                         {calculatePartnerships(inning).length > 0 ? (
                           <table className="table table-bordered table-sm match-table">
@@ -836,7 +814,17 @@ function MatchDetails() {
                   </div>
                   <div className="d-flex align-items-center mb-2">
                     <FaMapMarkerAlt className="me-2 text-muted" style={{ fontSize: "16px" }} />
-                    <span className="text-muted small">{match.venue || "Venue TBD"}</span>
+                    <span className="text-muted small">{match.venue?.name || "Venue TBD"}</span>
+                  </div>
+                  <div className="d-flex align-items-center mb-2">
+                    <FaUserCircle className="me-2 text-muted" style={{ fontSize: "16px" }} />
+                    <span className="text-muted small">
+                      Umpires: {match.umpires?.length > 0 ? match.umpires.map((u) => u.name).join(", ") : "Not Assigned"}
+                    </span>
+                  </div>
+                  <div className="d-flex align-items-center mb-2">
+                    <FaUserCircle className="me-2 text-muted" style={{ fontSize: "16px" }} />
+                    <span className="text-muted small">Referee: {match.referee || "Not Assigned"}</span>
                   </div>
                   <p className="toss-result small mb-0">{getTossUpdate()}</p>
                   {match.winner && match.status === "Completed" && (
@@ -934,6 +922,44 @@ function MatchDetails() {
                 const bowlerId = getPlayerId(match.currentBowler);
                 const latestBowlerOver = getLatestBowlerOver(inning, bowlerId);
 
+                const getPlayerStatsForMatch = (playerId) => {
+                  const playerScores = scores.filter(
+                    (score) =>
+                      score.innings === inning &&
+                      (score.batsman === playerId || score.batsman?._id === playerId)
+                  );
+                  const runs = playerScores.reduce((sum, score) => sum + (score.runs || 0), 0);
+                  const balls = playerScores.filter((score) => score.ballType === "legal").length;
+                  return { runs, balls };
+                };
+
+                const getBowlerStatsForMatch = (bowlerId, over) => {
+                  const overScores = scores.filter(
+                    (score) =>
+                      score.innings === inning &&
+                      score.over === over &&
+                      (score.bowler === bowlerId || score.bowler?._id === bowlerId)
+                  );
+                  const runs = overScores.reduce((sum, score) => sum + (score.runs || 0), 0);
+                  const wickets = overScores.filter((score) => score.wicket && score.wicketType !== "run out").length;
+                  const legalBalls = overScores.filter((score) => score.ballType === "legal").length;
+                  const overs = `${Math.floor(legalBalls / 6)}.${legalBalls % 6}`;
+                  return `${wickets}-${runs} (${overs})`;
+                };
+
+                const strikerStats =
+                  match.currentBatsmen && match.currentBatsmen[0]
+                    ? getPlayerStatsForMatch(getPlayerId(match.currentBatsmen[0]))
+                    : { runs: 0, balls: 0 };
+                const nonStrikerStats =
+                  match.currentBatsmen && match.currentBatsmen[1]
+                    ? getPlayerStatsForMatch(getPlayerId(match.currentBatsmen[1]))
+                    : { runs: 0, balls: 0 };
+                const bowlerStats =
+                  match.currentBowler && latestBowlerOver !== null
+                    ? getBowlerStatsForMatch(bowlerId, latestBowlerOver)
+                    : "0-0 (0.0)";
+
                 return (
                   <div key={inning} className="mb-4">
                     <div className="d-flex justify-content-between align-items-center mb-3">
@@ -949,12 +975,16 @@ function MatchDetails() {
                           <div className="player-card text-center">
                             <FaUserCircle size={40} className="text-muted mb-2" />
                             <p className="player-name mb-1">{getPlayerName(match.currentBatsmen[0])}</p>
-                            <p className="player-stats small">7(16)</p>
+                            <p className="player-stats small">
+                              {strikerStats.runs}({strikerStats.balls})
+                            </p>
                           </div>
                           <div className="player-card text-center">
                             <FaUserCircle size={40} className="text-muted mb-2" />
                             <p className="player-name mb-1">{getPlayerName(match.currentBatsmen[1])}</p>
-                            <p className="player-stats small">24(32)</p>
+                            <p className="player-stats small">
+                              {nonStrikerStats.runs}({nonStrikerStats.balls})
+                            </p>
                           </div>
                         </>
                       ) : (
@@ -964,9 +994,7 @@ function MatchDetails() {
                         <div className="player-card text-center">
                           <FaUserCircle size={40} className="text-muted mb-2" />
                           <p className="player-name mb-1">{getPlayerName(match.currentBowler)}</p>
-                          <p className="player-stats small">
-                            {getBowlerOverStats(inning, latestBowlerOver, bowlerId)}
-                          </p>
+                          <p className="player-stats small">{bowlerStats}</p>
                         </div>
                       ) : (
                         <p className="text-muted small">No current bowler or over data available</p>
