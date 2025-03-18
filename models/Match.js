@@ -53,6 +53,11 @@ const MatchSchema = new mongoose.Schema({
   tossWinner: { type: mongoose.Schema.Types.ObjectId, ref: "Team", default: null },
   tossChoice: { type: String, enum: ["bat", "bowl"], default: null },
   assignedScorer: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }, 
+  umpires: [
+    { type: mongoose.Schema.Types.ObjectId, ref: "Umpire", default: null }, // Reference Umpire model
+  ],
+  venue: { type: mongoose.Schema.Types.ObjectId, ref: "Venue", default: null }, // Reference Venue model
+  referee: { type: String, default: null }, // Manual string input
 });
 
 module.exports = mongoose.model("Match", MatchSchema);

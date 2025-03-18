@@ -3,10 +3,14 @@ const Match = require("../models/Match");
 const Team = require("../models/Team");
 const Tournament = require("../models/Tournament");
 const User = require("../models/User");
+const Umpire = require("../models/Umpire");
+const Venue = require("../models/Venue");
 
 // Create a match (Admin only)
 exports.createMatch = async (req, res) => {
-  const { teams, overs, tournament, assignedScorer } = req.body;
+  const { teams, overs, tournament, assignedScorer, umpires, venue, referee } = req.body;
+
+  console.log("Request body:", req.body); // Debug log
 
   if (!req.user || req.user.role !== "admin") {
     return res.status(403).json({ error: "Only admins can create matches" });
@@ -20,6 +24,9 @@ exports.createMatch = async (req, res) => {
   }
   if (!tournament) {
     return res.status(400).json({ error: "Tournament is required." });
+  }
+  if (!venue) {
+    return res.status(400).json({ error: "Venue is required." });
   }
 
   try {
@@ -46,6 +53,19 @@ exports.createMatch = async (req, res) => {
       }
     }
 
+    let umpireIds = umpires || [];
+    if (umpireIds.length > 0) {
+      const umpireData = await Umpire.find({ _id: { $in: umpireIds } });
+      if (umpireData.length !== umpireIds.length) {
+        return res.status(400).json({ error: "Invalid umpire selection" });
+      }
+    }
+
+    const venueData = await Venue.findById(venue);
+    if (!venueData) {
+      return res.status(400).json({ error: "Invalid venue ID" });
+    }
+
     const teamNames = teamData.map((team) => team.name);
 
     const newMatch = new Match({
@@ -55,9 +75,15 @@ exports.createMatch = async (req, res) => {
       battingTeam: teams[0],
       bowlingTeam: teams[1],
       assignedScorer: scorerId,
+      umpires: umpireIds,
+      venue, // Ensure this is being set
+      referee,
     });
 
+    console.log("New match before save:", newMatch); // Debug log
     await newMatch.save();
+    console.log("Match saved:", newMatch); // Debug log
+
     res.status(201).json({
       message: "Match created successfully",
       match: {
@@ -78,6 +104,8 @@ exports.getMatches = async (req, res) => {
     const matches = await Match.find()
       .populate("teams", "name")
       .populate("tournament", "name")
+      .populate("umpires", "name email") // Populate umpires with name and email
+      .populate("venue", "name")
       .populate("assignedScorer", "name email");
     res.status(200).json(matches);
   } catch (error) {
@@ -95,7 +123,7 @@ exports.updateMatch = async (req, res) => {
     const match = await Match.findById(req.params.id);
     if (!match) return res.status(404).json({ message: "Match not found" });
 
-    const { tossWinner, tossChoice, battingTeam, bowlingTeam, assignedScorer } = req.body;
+    const { tossWinner, tossChoice, battingTeam, bowlingTeam, assignedScorer, umpires, venue, referee } = req.body;
 
     if (tossWinner || tossChoice) {
       if (!tossWinner || !tossChoice) {
@@ -117,12 +145,34 @@ exports.updateMatch = async (req, res) => {
       }
       match.assignedScorer = scorerId;
     } else if (assignedScorer === null) {
-      match.assignedScorer = null; // Explicitly allow unassignment
+      match.assignedScorer = null;
+    }
+
+    // Validate umpires
+    let umpireIds = umpires === undefined ? match.umpires : umpires;
+    if (umpireIds && umpireIds.length > 0) {
+      const umpireData = await Umpire.find({ _id: { $in: umpireIds } });
+      if (umpireData.length !== umpireIds.length) {
+        return res.status(400).json({ error: "Invalid umpire selection" });
+      }
+      match.umpires = umpireIds;
+    } else if (umpires === null) {
+      match.umpires = [];
+    }
+
+    // Validate venue
+    let venueId = venue === undefined ? match.venue : venue;
+    if (venueId) {
+      const venueData = await Venue.findById(venueId);
+      if (!venueData) {
+        return res.status(400).json({ error: "Invalid venue ID" });
+      }
+      match.venue = venueId;
     }
 
     const updatedMatch = await Match.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, assignedScorer: scorerId },
+      { ...req.body, assignedScorer: scorerId, umpires: umpireIds, venue: venueId, referee },
       { new: true }
     )
       .populate("teams", "name")
@@ -131,7 +181,9 @@ exports.updateMatch = async (req, res) => {
       .populate("bowlingTeam", "name")
       .populate("tossWinner", "name")
       .populate("winner", "name")
-      .populate("assignedScorer", "name email");
+      .populate("assignedScorer", "name email")
+      .populate("umpires", "name email")
+      .populate("venue", "name");
 
     if (!updatedMatch) return res.status(404).json({ message: "Match not found" });
 
@@ -215,7 +267,9 @@ exports.getMatchById = async (req, res) => {
       .populate("currentBowler", "name")
       .populate("winner", "name")
       .populate("tournament", "name")
-      .populate("assignedScorer", "name email");
+      .populate("assignedScorer", "name email")
+      .populate("umpires", "name") // Populate umpires with name and email
+      .populate("venue", "name"); 
     if (!match) return res.status(404).json({ message: "Match not found" });
     res.json(match);
   } catch (err) {
@@ -236,7 +290,9 @@ exports.getTeamMatches = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .populate("teams", "name")
-      .populate("winner", "name");
+      .populate("winner", "name")
+      .populate("umpires", "name email") // Populate umpires with name and email
+      .populate("venue", "name"); 
 
     res.status(200).json(matches);
   } catch (error) {
