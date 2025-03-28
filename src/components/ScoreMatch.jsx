@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -17,6 +16,7 @@ const ScoreMatch = () => {
   const [battingTeam, setBattingTeam] = useState(null);
   const [bowlingTeam, setBowlingTeam] = useState(null);
   const [captains, setCaptains] = useState({});
+  const [viceCaptains, setViceCaptains] = useState({});
   const [currentBatsmen, setCurrentBatsmen] = useState([null, null]);
   const [currentBowler, setCurrentBowler] = useState(null);
   const [previousBowler, setPreviousBowler] = useState(null);
@@ -35,13 +35,14 @@ const ScoreMatch = () => {
   const [wicketModal, setWicketModal] = useState(null);
   const [tossWinner, setTossWinner] = useState(null);
   const [tossChoice, setTossChoice] = useState("");
+  const [playing11, setPlaying11] = useState({});
+  const [stopReason, setStopReason] = useState("");
 
   useEffect(() => {
     const fetchMatchData = async () => {
       try {
         const matchResponse = await api.get(`/api/matches/${matchId}`);
         const matchData = matchResponse.data;
-        console.log("Fetched match data:", matchData);
         setMatch(matchData);
 
         const teamIds = matchData.teams.map((team) => team._id).join(",");
@@ -55,6 +56,7 @@ const ScoreMatch = () => {
         setBattingTeam(matchData.battingTeam || matchData.teams[0]);
         setBowlingTeam(matchData.bowlingTeam || matchData.teams[1]);
         setCaptains(matchData.captains || {});
+        setViceCaptains(matchData.viceCaptains || {});
         setCurrentBatsmen([
           matchData.currentBatsmen[0] || null,
           matchData.currentBatsmen[1] || null,
@@ -67,6 +69,8 @@ const ScoreMatch = () => {
         setTossWinner(matchData.tossWinner || null);
         setTossChoice(matchData.tossChoice || "");
         setRetiredHurtPlayers(matchData.retiredHurtPlayers || {});
+        setStopReason(matchData.stopReason || "");
+        setPlaying11(matchData.playing11 || {});
 
         recalculateMatchState(scoresResponse.data, matchData);
 
@@ -88,7 +92,6 @@ const ScoreMatch = () => {
 
   const updateMatchState = async (updatedState) => {
     try {
-      console.log("Updating match state with:", updatedState);
       await api.put(`/api/matches/${matchId}/state`, updatedState);
     } catch (err) {
       toast.error("Error updating match state");
@@ -151,6 +154,7 @@ const ScoreMatch = () => {
       previousBowler: null,
       tossWinner: tossWinner || null,
       tossChoice: tossChoice || "",
+      stopReason: "",
     };
     updateMatchState(initialState);
 
@@ -442,6 +446,7 @@ const ScoreMatch = () => {
         dismissedBatsmen,
         retiredHurtPlayers,
         matchStats,
+        playing11, // Add this
       });
     } catch (err) {
       toast.error("Error saving score");
@@ -449,18 +454,28 @@ const ScoreMatch = () => {
     }
   };
 
-  const handleCaptainSelection = async () => {
-    if (Object.keys(captains).length !== match.teams.length) {
-      toast.error("Please select captains for all teams!");
+  const handleCaptainAndViceCaptainSelection = async () => {
+    if (Object.keys(captains).length !== match.teams.length || 
+        Object.keys(viceCaptains).length !== match.teams.length) {
+      toast.error("Please select both captains and vice-captains for all teams!");
       return;
     }
     try {
-      const response = await api.put(`/api/matches/${matchId}`, { captains });
-      setMatch((prev) => ({ ...prev, captains: response.data.captains || captains }));
+      const response = await api.put(`/api/matches/${matchId}`, { 
+        captains,
+        viceCaptains 
+      });
+      setMatch((prev) => ({ 
+        ...prev, 
+        captains: response.data.captains || captains,
+        viceCaptains: response.data.viceCaptains || viceCaptains 
+      }));
       setCaptains(response.data.captains || captains);
-      toast.success("Captains selected successfully!");
+      setViceCaptains(response.data.viceCaptains || viceCaptains);
+      updateMatchState({ captains, viceCaptains });
+      toast.success("Captains and Vice-Captains updated successfully!");
     } catch (err) {
-      toast.error("Error selecting captains");
+      toast.error("Error updating captains and vice-captains");
       console.error("Captains error:", err);
     }
   };
@@ -579,17 +594,10 @@ const ScoreMatch = () => {
           previousBowler: null,
           newOverStarted: true,
           retiredHurtPlayers,
+          playing11, // Add this
         });
       } else if (!winner) {
-        const winnerTeam = determineWinner();
-        setWinner(winnerTeam);
-        setMatch((prev) => ({ ...prev, status: "Completed" }));
-        await api.put(`/api/matches/${matchId}`, {
-          status: "Completed",
-          winner: winnerTeam._id,
-        });
-        updateMatchState({ winner: winnerTeam._id, status: "Completed", retiredHurtPlayers });
-        toast.success(`Match completed! Winner: ${winnerTeam.name}`);
+        await checkTargetAchieved();
       }
     }
   };
@@ -627,51 +635,125 @@ const ScoreMatch = () => {
 
       toast.info(`Innings ${currentInnings} completed. Starting innings ${currentInnings + 1}.`);
     } else {
-      const winnerTeam = determineWinner();
-      setWinner(winnerTeam);
-      setMatch((prev) => ({ ...prev, status: "Completed" }));
-      await api.put(`/api/matches/${matchId}`, {
-        status: "Completed",
-        winner: winnerTeam._id,
-      });
-      updateMatchState({ 
-        winner: winnerTeam._id, 
-        status: "Completed",
-        retiredHurtPlayers,
-      });
-      toast.success(`Match completed! Winner: ${winnerTeam.name}`);
+      await checkTargetAchieved();
     }
-  };
-
-  const determineWinner = () => {
-    const totalRunsTeam1 = runsScored.innings1 + (runsScored.innings3 || 0);
-    const totalRunsTeam2 = runsScored.innings2 + (runsScored.innings4 || 0);
-    return totalRunsTeam2 > totalRunsTeam1 ? match.teams[1] : match.teams[0];
   };
 
   const checkTargetAchieved = async () => {
     const currentOversKey = `innings${currentInnings}`;
     const currentWickets = wickets[currentOversKey] || 0;
     const maxWickets = match.maxWickets || 10;
-
-    if (currentInnings === 2 && !winner && match.status === "Ongoing") {
-      if (runsScored[currentOversKey] === target) {
-        setMatch((prev) => ({ ...prev, status: "Completed" }));
-        await api.put(`/api/matches/${matchId}`, { status: "Completed" });
-        updateMatchState({ status: "Completed", retiredHurtPlayers });
-        toast.info("Match tied on this ball!");
-      } else if (runsScored[currentOversKey] >= target) {
-        setWinner(battingTeam);
-        setMatch((prev) => ({ ...prev, status: "Completed" }));
+    const team1Runs = runsScored.innings1 + (runsScored.innings3 || 0); // First team's total (innings 1 + 3 for Test)
+    const team2Runs = runsScored.innings2 + (runsScored.innings4 || 0); // Second team's total (innings 2 + 4 for Test)
+    const totalInnings = match.format === "Test" ? 4 : 2;
+  
+    if (currentInnings === 2 && match.status === "Ongoing") {
+      const secondInningsScore = runsScored[currentOversKey] || 0;
+  
+      // Case 1: Second innings score equals or exceeds the target
+      if (secondInningsScore >= target) {
+        const winnerTeam = battingTeam; // Second innings batting team wins
+        setWinner(winnerTeam);
+        setMatch((prev) => ({ ...prev, status: "Completed", winner: winnerTeam }));
         await api.put(`/api/matches/${matchId}`, {
           status: "Completed",
-          winner: battingTeam._id,
+          winner: winnerTeam._id,
         });
-        updateMatchState({ winner: battingTeam._id, status: "Completed", retiredHurtPlayers });
-        toast.success(`Target achieved! Match completed! Winner: ${battingTeam.name}`);
+        updateMatchState({ winner: winnerTeam._id, status: "Completed", retiredHurtPlayers });
+        toast.success(`Target achieved! Match completed! Winner: ${winnerTeam.name}`);
       }
-    } else if (currentInnings === 2 && (currentWickets >= maxWickets || overs[currentOversKey] >= match.overs)) {
-      await checkInningsOrMatchEnd();
+      // Case 2: Second innings completes (by overs or wickets)
+      else if (currentWickets >= maxWickets || overs[currentOversKey] >= match.overs) {
+        if (team1Runs === team2Runs) {
+          // Case 2a: Scores are equal, match is a tie
+          setMatch((prev) => ({ ...prev, status: "Completed", winner: null }));
+          await api.put(`/api/matches/${matchId}`, { status: "Completed", winner: null });
+          updateMatchState({ status: "Completed", winner: null, retiredHurtPlayers });
+          toast.info("Match ended in a Tie!");
+        } else {
+          // Case 2b: First innings team wins as second innings didn't reach target
+          const winnerTeam = match.teams[0]; // Assuming team[0] batted first
+          setWinner(winnerTeam);
+          setMatch((prev) => ({ ...prev, status: "Completed", winner: winnerTeam }));
+          await api.put(`/api/matches/${matchId}`, {
+            status: "Completed",
+            winner: winnerTeam._id,
+          });
+          updateMatchState({ winner: winnerTeam._id, status: "Completed", retiredHurtPlayers });
+          toast.success(`Match completed! Winner: ${winnerTeam.name}`);
+        }
+      }
+    } else if (currentInnings === totalInnings && match.status === "Ongoing") {
+      // Handle Test matches or multi-innings formats if needed
+      if (overs[currentOversKey] >= match.overs || currentWickets >= maxWickets) {
+        if (team1Runs === team2Runs) {
+          setMatch((prev) => ({ ...prev, status: "Completed", winner: null }));
+          await api.put(`/api/matches/${matchId}`, { status: "Completed", winner: null });
+          updateMatchState({ status: "Completed", winner: null, retiredHurtPlayers });
+          toast.info("Match ended in a Tie!");
+        } else {
+          const winnerTeam = team2Runs > team1Runs ? match.teams[1] : match.teams[0];
+          setWinner(winnerTeam);
+          setMatch((prev) => ({ ...prev, status: "Completed", winner: winnerTeam }));
+          await api.put(`/api/matches/${matchId}`, {
+            status: "Completed",
+            winner: winnerTeam._id,
+          });
+          updateMatchState({ winner: winnerTeam._id, status: "Completed", retiredHurtPlayers });
+          toast.success(`Match completed! Winner: ${winnerTeam.name}`);
+        }
+      }
+    }
+  };
+
+  const handleStopMatch = async () => {
+    if (!stopReason.trim()) {
+      toast.error("Please provide a reason for stopping the match!");
+      return;
+    }
+    try {
+      await api.put(`/api/matches/${matchId}`, {
+        status: "Stopped",
+        stopReason
+      });
+      setMatch((prev) => ({ ...prev, status: "Stopped", stopReason }));
+      updateMatchState({ status: "Stopped", stopReason });
+      toast.success("Match stopped successfully!");
+    } catch (err) {
+      toast.error("Error stopping match");
+      console.error(err);
+    }
+  };
+
+  const handleResumeMatch = async () => {
+    try {
+      await api.put(`/api/matches/${matchId}`, {
+        status: "Ongoing",
+        stopReason: ""
+      });
+      setMatch((prev) => ({ ...prev, status: "Ongoing", stopReason: "" }));
+      setStopReason("");
+      updateMatchState({ status: "Ongoing", stopReason: "" });
+      toast.success("Match resumed successfully!");
+    } catch (err) {
+      toast.error("Error resuming match");
+      console.error(err);
+    }
+  };
+
+  const handleCancelMatch = async () => {
+    if (!window.confirm("Are you sure you want to cancel this match? This action cannot be undone.")) return;
+    try {
+      await api.put(`/api/matches/${matchId}`, {
+        status: "Cancelled",
+        stopReason
+      });
+      setMatch((prev) => ({ ...prev, status: "Cancelled", stopReason }));
+      updateMatchState({ status: "Cancelled", stopReason });
+      toast.success("Match cancelled successfully!");
+    } catch (err) {
+      toast.error("Error cancelling match");
+      console.error(err);
     }
   };
 
@@ -764,6 +846,7 @@ const ScoreMatch = () => {
         },
         tossWinner: tossWinner || null,
         tossChoice: tossChoice || "",
+        stopReason: match.stopReason || "",
       };
       setRunsScored(resetState.runsScored);
       setWickets(resetState.wickets);
@@ -790,8 +873,44 @@ const ScoreMatch = () => {
   const getPlayerName = (id) => {
     const player = players.find((p) => p._id === id);
     const isCaptain = Object.values(captains).includes(id);
-    return player ? `${player.name}${isCaptain ? " (C)" : ""}` : "Unknown";
+    const isViceCaptain = Object.values(viceCaptains).includes(id);
+    return player ? `${player.name}${isCaptain ? " (C)" : ""}${isViceCaptain ? " (VC)" : ""}` : "Unknown";
   };
+
+const handlePlaying11Selection = (teamId, playerId) => {
+  setPlaying11((prev) => {
+    const teamPlayers = prev[teamId] || [];
+    if (teamPlayers.includes(playerId)) {
+      return { ...prev, [teamId]: teamPlayers.filter((id) => id !== playerId) };
+    } else if (teamPlayers.length < 11) {
+      return { ...prev, [teamId]: [...teamPlayers, playerId] };
+    } else {
+      toast.error("Cannot select more than 11 players!");
+      return prev;
+    }
+  });
+};
+
+const handleSubmitPlaying11 = async () => {
+  if (
+    Object.keys(playing11).length !== match.teams.length ||
+    !match.teams.every((team) => playing11[team._id]?.length === 11)
+  ) {
+    toast.error("Please select exactly 11 players for each team!");
+    return;
+  }
+
+  try {
+    await api.put(`/api/matches/${matchId}`, { playing11 });
+    setMatch((prev) => ({ ...prev, playing11 }));
+    updateMatchState({ playing11 });
+    toast.success("Playing 11 submitted successfully!");
+  } catch (err) {
+    toast.error("Error submitting Playing 11");
+    console.error("Playing 11 error:", err);
+  }
+};
+
 
   const calculateExtras = (innings) => {
     const inningsKey = `innings${innings}`;
@@ -834,44 +953,71 @@ const ScoreMatch = () => {
               </p>
             )}
             {winner && <p><strong>Winner:</strong> {winner.name}</p>}
+            {match.status === "Stopped" && <p><strong>Stop Reason:</strong> {match.stopReason}</p>}
+            {match.status === "Cancelled" && <p><strong>Cancel Reason:</strong> {match.stopReason}</p>}
           </div>
         </div>
 
-        {match.status === "Scheduled" && Object.keys(captains).length < match.teams.length && (
-          <div className="card mb-4">
-            <div className="card-body">
-              <h4 className="card-title">Select Captains</h4>
-              <div className="row">
-                {match.teams.map((team) => (
-                  <div key={team._id} className="col-md-6 mb-3">
-                    <label className="form-label">{team.name} Captain:</label>
-                    <select
-                      className="form-control"
-                      value={captains[team._id] || ""}
-                      onChange={(e) =>
-                        setCaptains((prev) => ({ ...prev, [team._id]: e.target.value }))
+        {/* Captain and Vice-Captain Selection - Always Visible */}
+        <div className="card mb-4">
+          <div className="card-body">
+            <h4 className="card-title">Captains and Vice-Captains</h4>
+            <div className="row">
+              {match.teams.map((team) => (
+                <div key={team._id} className="col-md-6 mb-3">
+                  <label className="form-label">{team.name} Captain:</label>
+                  <select
+                    className="form-control mb-2"
+                    value={captains[team._id] || ""}
+                    onChange={(e) => {
+                      const newCaptain = e.target.value;
+                      setCaptains((prev) => ({ ...prev, [team._id]: newCaptain }));
+                      // If the new captain was previously vice-captain, clear vice-captain
+                      if (viceCaptains[team._id] === newCaptain) {
+                        setViceCaptains((prev) => ({ ...prev, [team._id]: "" }));
                       }
-                    >
-                      <option value="">Select Captain</option>
-                      {players
-                        .filter((player) => player.team === team.name)
-                        .map((player) => (
-                          <option key={player._id} value={player._id}>
-                            {getPlayerName(player._id)}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-              <button className="btn btn-success w-100" onClick={handleCaptainSelection}>
-                Submit Captains
-              </button>
+                    }}
+                    disabled={match.status === "Completed" || match.status === "Cancelled"}
+                  >
+                    <option value="">Select Captain</option>
+                    {players
+                      .filter((player) => player.team === team.name)
+                      .map((player) => (
+                        <option key={player._id} value={player._id}>
+                          {getPlayerName(player._id)}
+                        </option>
+                      ))}
+                  </select>
+                  <label className="form-label">{team.name} Vice-Captain:</label>
+                  <select
+                    className="form-control"
+                    value={viceCaptains[team._id] || ""}
+                    onChange={(e) => setViceCaptains((prev) => ({ ...prev, [team._id]: e.target.value }))}
+                    disabled={!captains[team._id] || match.status === "Completed" || match.status === "Cancelled"}
+                  >
+                    <option value="">Select Vice-Captain</option>
+                    {players
+                      .filter((player) => player.team === team.name && player._id !== captains[team._id])
+                      .map((player) => (
+                        <option key={player._id} value={player._id}>
+                          {getPlayerName(player._id)}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              ))}
             </div>
+            <button 
+              className="btn btn-success w-100" 
+              onClick={handleCaptainAndViceCaptainSelection}
+              disabled={match.status === "Completed" || match.status === "Cancelled"}
+            >
+              Update Captains and Vice-Captains
+            </button>
           </div>
-        )}
+        </div>
 
-        {match.status === "Scheduled" && Object.keys(captains).length === match.teams.length && (
+        {match.status === "Scheduled" && (
           <div className="card mb-4">
             <div className="card-body">
               <h4 className="card-title">Toss Decision</h4>
@@ -920,8 +1066,46 @@ const ScoreMatch = () => {
             </div>
           </div>
         )}
-
-        {match.status === "Ongoing" && battingTeam && bowlingTeam && (
+          {match.status === "Ongoing" && !match.playing11?.[match.teams[0]._id]?.length && (
+  <div className="card mb-4">
+    <div className="card-body">
+      <h4 className="card-title">Select Playing 11</h4>
+      <div className="row">
+        {match.teams.map((team) => (
+          <div key={team._id} className="col-md-6 mb-3">
+            <h5>{team.name} ({playing11[team._id]?.length || 0}/11)</h5>
+            <div className="list-group">
+              {players
+                .filter((p) => p.team === team.name)
+                .map((player) => (
+                  <label key={player._id} className="list-group-item">
+                    <input
+                      type="checkbox"
+                      checked={playing11[team._id]?.includes(player._id) || false}
+                      onChange={() => handlePlaying11Selection(team._id, player._id)}
+                      disabled={
+                        playing11[team._id]?.length >= 11 &&
+                        !playing11[team._id].includes(player._id)
+                      }
+                    />
+                    <span className="ms-2">{getPlayerName(player._id)}</span>
+                  </label>
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <button
+        className="btn btn-primary w-100 mt-3"
+        onClick={handleSubmitPlaying11}
+        disabled={!match.teams.every((team) => playing11[team._id]?.length === 11)}
+      >
+        Submit Playing 11
+      </button>
+    </div>
+  </div>
+)}
+        {(match.status === "Ongoing" || match.status === "Stopped") && battingTeam && bowlingTeam && (
           <>
             <div className="card mb-4">
               <div className="card-body">
@@ -941,22 +1125,23 @@ const ScoreMatch = () => {
                       }}
                       disabled={
                         wickets[`innings${currentInnings}`] >= (match.maxWickets || 10) ||
-                        match.status === "Completed"
+                        match.status === "Completed" || match.status === "Stopped"
                       }
                     >
                       <option value="">Select Striker</option>
-                      {players
-                        .filter(
-                          (p) =>
-                            p.team === battingTeam.name &&
-                            !dismissedBatsmen[`innings${currentInnings}`].includes(p._id)
-                        )
-                        .map((player) => (
-                          <option key={player._id} value={player._id}>
-                            {getPlayerName(player._id)}
-                            {retiredHurtPlayers[`innings${currentInnings}`]?.includes(player._id) ? " (Retired Hurt)" : ""}
-                          </option>
-                        ))}
+                     {players
+  .filter(
+    (p) =>
+      p.team === battingTeam.name &&
+      playing11[battingTeam._id]?.includes(p._id) && // Add this condition
+      !dismissedBatsmen[`innings${currentInnings}`].includes(p._id)
+  )
+  .map((player) => (
+    <option key={player._id} value={player._id}>
+      {getPlayerName(player._id)}
+      {retiredHurtPlayers[`innings${currentInnings}`]?.includes(player._id) ? " (Retired Hurt)" : ""}
+    </option>
+  ))}
                     </select>
                   </div>
                   <div className="col-md-4 mb-3">
@@ -973,23 +1158,24 @@ const ScoreMatch = () => {
                       }}
                       disabled={
                         wickets[`innings${currentInnings}`] >= (match.maxWickets || 10) ||
-                        match.status === "Completed"
+                        match.status === "Completed" || match.status === "Stopped"
                       }
                     >
                       <option value="">Select Non-Striker</option>
-                      {players
-                        .filter(
-                          (p) =>
-                            p.team === battingTeam.name &&
-                            !dismissedBatsmen[`innings${currentInnings}`].includes(p._id) &&
-                            p._id !== currentBatsmen[0]?._id
-                        )
-                        .map((player) => (
-                          <option key={player._id} value={player._id}>
-                            {getPlayerName(player._id)}
-                            {retiredHurtPlayers[`innings${currentInnings}`]?.includes(player._id) ? " (Retired Hurt)" : ""}
-                          </option>
-                        ))}
+               {players
+  .filter(
+    (p) =>
+      p.team === battingTeam.name &&
+      playing11[battingTeam._id]?.includes(p._id) && // Add this condition
+      !dismissedBatsmen[`innings${currentInnings}`].includes(p._id) &&
+      p._id !== currentBatsmen[0]?._id
+  )
+  .map((player) => (
+    <option key={player._id} value={player._id}>
+      {getPlayerName(player._id)}
+      {retiredHurtPlayers[`innings${currentInnings}`]?.includes(player._id) ? " (Retired Hurt)" : ""}
+    </option>
+  ))}
                     </select>
                   </div>
                   <div className="col-md-4 mb-3">
@@ -1009,17 +1195,22 @@ const ScoreMatch = () => {
                       }}
                       disabled={
                         match.status === "Completed" ||
+                        match.status === "Stopped" ||
                         (overs[`innings${currentInnings}`] >= match.overs && currentInnings === 1)
                       }
                     >
                       <option value="">Select Bowler</option>
-                      {players
-                        .filter((p) => p.team === bowlingTeam.name)
-                        .map((player) => (
-                          <option key={player._id} value={player._id}>
-                            {getPlayerName(player._id)}
-                          </option>
-                        ))}
+                    {players
+  .filter(
+    (p) =>
+      p.team === bowlingTeam.name &&
+      playing11[bowlingTeam._id]?.includes(p._id) // Add this condition
+  )
+  .map((player) => (
+    <option key={player._id} value={player._id}>
+      {getPlayerName(player._id)}
+    </option>
+  ))}
                     </select>
                   </div>
                 </div>
@@ -1028,96 +1219,128 @@ const ScoreMatch = () => {
 
             <div className="card mb-4">
               <div className="card-body">
-                <h4 className="card-title">Score Ball - Innings {currentInnings}</h4>
-                <div className="d-flex flex-wrap gap-2 mb-3">
-                  {[0, 1, 2, 3, 4, 6].map((run) => (
-                    <button
-                      key={`run-${run}`}
-                      className="btn btn-primary score-btn"
-                      onClick={() => handleScore("runs", run)}
-                      disabled={!currentBatsmen[0] || !currentBowler || match.status === "Completed"}
-                    >
-                      {run}
-                    </button>
-                  ))}
+                <h4 className="card-title">Match Control</h4>
+                <div className="mb-3">
+                  <label className="form-label">Stop Reason:</label>
+                  <textarea
+                    className="form-control"
+                    value={stopReason}
+                    onChange={(e) => setStopReason(e.target.value)}
+                    placeholder="Enter reason for stopping the match"
+                    disabled={match.status !== "Ongoing"}
+                  />
                 </div>
-                <div className="d-flex flex-wrap gap-2 mb-3">
-                  <button
-                    className="btn btn-warning score-btn"
-                    onClick={() => handleScore("wide")}
-                    disabled={match.status === "Completed"}
-                  >
-                    Wide
-                  </button>
-                  <button
-                    className="btn btn-warning score-btn"
-                    onClick={() => handleWicketClick("wide")}
-                    disabled={match.status === "Completed"}
-                  >
-                    Wide + Wicket
-                  </button>
-                  {[1, 2, 3, 4, 5, 6].map((extra) => (
-                    <button
-                      key={`wide-${extra}`}
-                      className="btn btn-warning score-btn"
-                      onClick={() => handleScore("wide", extra)}
-                      disabled={match.status === "Completed"}
+                <div className="d-flex gap-2">
+                  {match.status === "Ongoing" && (
+                    <button 
+                      className="btn btn-warning" 
+                      onClick={handleStopMatch}
+                      disabled={!stopReason.trim()}
                     >
-                      Wide+{extra}
+                      Stop Match
                     </button>
-                  ))}
-                </div>
-                <div className="d-flex flex-wrap gap-2 mb-3">
-                  <button
-                    className="btn btn-danger score-btn"
-                    onClick={() => handleScore("noBall", 0)}
-                    disabled={match.status === "Completed"}
-                  >
-                    No Ball
-                  </button>
-                  <button
-                    className="btn btn-danger score-btn"
-                    onClick={() => handleWicketClick("noBall")}
-                    disabled={match.status === "Completed"}
-                  >
-                    No Ball + Wicket
-                  </button>
-                  {[1, 2, 3, 4, 5, 6].map((extra) => (
-                    <button
-                      key={`noBall-${extra}`}
-                      className="btn btn-danger score-btn"
-                      onClick={() => handleScore("noBall", extra)}
-                      disabled={match.status === "Completed"}
-                    >
-                      No Ball+{extra}
-                    </button>
-                  ))}
-                </div>
-                <div className="d-flex flex-wrap gap-2">
-                  <button
-                    className="btn btn-danger score-btn"
-                    onClick={() => handleWicketClick()}
-                    disabled={!currentBatsmen[0] || !currentBowler || match.status === "Completed"}
-                  >
-                    Wicket
-                  </button>
-                  <button
-                    className="btn btn-info score-btn"
-                    onClick={() => handleScore("retiredHurt")}
-                    disabled={!currentBatsmen[0] || match.status === "Completed"}
-                  >
-                    Retired Hurt
-                  </button>
-                  <button
-                    className="btn btn-warning score-btn"
-                    onClick={handleCompleteInnings}
-                    disabled={match.status === "Completed"}
-                  >
-                    Complete Innings
-                  </button>
+                  )}
+                  {match.status === "Stopped" && (
+                    <>
+                      <button className="btn btn-success" onClick={handleResumeMatch}>
+                        Resume Match
+                      </button>
+                      <button className="btn btn-danger" onClick={handleCancelMatch}>
+                        Cancel Match
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
+
+            {match.status === "Ongoing" && (
+              <div className="card mb-4">
+                <div className="card-body">
+                  <h4 className="card-title">Score Ball - Innings {currentInnings}</h4>
+                  <div className="d-flex flex-wrap gap-2 mb-3">
+                    {[0, 1, 2, 3, 4, 6].map((run) => (
+                      <button
+                        key={`run-${run}`}
+                        className="btn btn-primary score-btn"
+                        onClick={() => handleScore("runs", run)}
+                        disabled={!currentBatsmen[0] || !currentBowler}
+                      >
+                        {run}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="d-flex flex-wrap gap-2 mb-3">
+                    <button
+                      className="btn btn-warning score-btn"
+                      onClick={() => handleScore("wide")}
+                    >
+                      Wide
+                    </button>
+                    <button
+                      className="btn btn-warning score-btn"
+                      onClick={() => handleWicketClick("wide")}
+                    >
+                      Wide + Wicket
+                    </button>
+                    {[1, 2, 3, 4, 5, 6].map((extra) => (
+                      <button
+                        key={`wide-${extra}`}
+                        className="btn btn-warning score-btn"
+                        onClick={() => handleScore("wide", extra)}
+                      >
+                        Wide+{extra}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="d-flex flex-wrap gap-2 mb-3">
+                    <button
+                      className="btn btn-danger score-btn"
+                      onClick={() => handleScore("noBall", 0)}
+                    >
+                      No Ball
+                    </button>
+                    <button
+                      className="btn btn-danger score-btn"
+                      onClick={() => handleWicketClick("noBall")}
+                    >
+                      No Ball + Wicket
+                    </button>
+                    {[1, 2, 3, 4, 5, 6].map((extra) => (
+                      <button
+                        key={`noBall-${extra}`}
+                        className="btn btn-danger score-btn"
+                        onClick={() => handleScore("noBall", extra)}
+                      >
+                        No Ball+{extra}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="d-flex flex-wrap gap-2">
+                    <button
+                      className="btn btn-danger score-btn"
+                      onClick={() => handleWicketClick()}
+                      disabled={!currentBatsmen[0] || !currentBowler}
+                    >
+                      Wicket
+                    </button>
+                    <button
+                      className="btn btn-info score-btn"
+                      onClick={() => handleScore("retiredHurt")}
+                      disabled={!currentBatsmen[0]}
+                    >
+                      Retired Hurt
+                    </button>
+                    <button
+                      className="btn btn-warning score-btn"
+                      onClick={handleCompleteInnings}
+                    >
+                      Complete Innings
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -1268,8 +1491,8 @@ const ScoreMatch = () => {
                     <h6>Batting ({(inning === 1 ? battingTeam : bowlingTeam)?.name || match.teams[(inning - 1) % 2]?.name || "N/A"})</h6>
                     <div className="table-responsive mb-3">
                       <table className="table table-bordered">
-                        <thead>
-                          <tr>
+                      <thead className="table-dark">
+                      <tr>
                             <th>Player</th>
                             <th>Runs</th>
                             <th>Balls</th>
@@ -1316,8 +1539,8 @@ const ScoreMatch = () => {
                     <h6>Bowling ({(inning === 1 ? bowlingTeam : battingTeam)?.name || match.teams[inning % 2]?.name || "N/A"})</h6>
                     <div className="table-responsive mb-3">
                       <table className="table table-bordered">
-                        <thead>
-                          <tr>
+                      <thead className="table-dark">
+                      <tr>
                             <th>Player</th>
                             <th>Overs</th>
                             <th>Runs</th>
@@ -1373,7 +1596,7 @@ const ScoreMatch = () => {
                     <h6>Fielding ({(inning === 1 ? bowlingTeam : battingTeam)?.name || match.teams[inning % 2]?.name || "N/A"})</h6>
                     <div className="table-responsive">
                       <table className="table table-bordered">
-                        <thead>
+                      <thead className="table-dark">
                           <tr>
                             <th>Player</th>
                             <th>Catches</th>
@@ -1511,13 +1734,17 @@ const ScoreMatch = () => {
                         })
                       }
                     >
-                      {players
-                        .filter((p) => p.team === bowlingTeam.name)
-                        .map((player) => (
-                          <option key={player._id} value={player._id}>
-                            {getPlayerName(player._id)}
-                          </option>
-                        ))}
+                     {players
+  .filter(
+    (p) =>
+      p.team === bowlingTeam.name &&
+      playing11[bowlingTeam._id]?.includes(p._id) // Add this condition
+  )
+  .map((player) => (
+    <option key={player._id} value={player._id}>
+      {getPlayerName(player._id)}
+    </option>
+  ))}
                     </select>
                     <small className="form-text text-muted">
                       Hold Ctrl/Cmd to select multiple fielders (e.g., for run out).

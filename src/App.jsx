@@ -19,6 +19,9 @@ import Fixtures from "./components/Fixtures";
 import PlayerDetails from "./components/PlayerDetails";
 import VenueManagement from "./components/VenueManagement";
 import UmpireManagement from "./components/UmpireManagement";
+import AdminPages from "./components/AdminPages";
+import Page from "./components/Page";
+// import PlayerDetail from "./components/Playerdetail";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./assets/styles/tailwind.css";
@@ -51,7 +54,10 @@ function App() {
         <Route path="/player/:playerId" element={<PlayerDetails />} />
         <Route path="/venues" element={<VenueManagement />} />
         <Route path="/umpires" element={<UmpireManagement />} />
-      </Routes>
+        <Route path="/pages" element={<AdminPages />} />
+        <Route path="/page/:slug" element={<Page />} />
+        {/* <Route path="/player/:playerId" element={<PlayerDetail />} />  */}
+     </Routes>
     </Router>
   );
 }

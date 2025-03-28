@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
 import Header from "./Header";
 import { FaCalendarAlt, FaChevronDown, FaTrophy } from "react-icons/fa";
@@ -75,9 +74,6 @@ function Series() {
 
     return (
       <div className="tournaments-section mb-5">
-        {/* <h2 className="text-center mb-4 fw-bold text-dark">
-          Tournaments
-        </h2> */}
         {isLoading ? (
           <div className="text-center py-5">
             <div className="spinner-border text-primary" role="status">
@@ -90,16 +86,16 @@ function Series() {
               <div key={groupIndex} className="row g-4 mb-4 animate__animated animate__fadeIn">
                 {group.map((tournament) => {
                   const statusStyle = getStatusStyle(tournament.status);
-                  const winnerName = tournament.status === "Completed" && tournament.winner?.name 
-                    ? tournament.winner.name 
-                    : null;
+                  const winnerName =
+                    tournament.status === "Completed" && tournament.winner?.name
+                      ? tournament.winner.name
+                      : null;
                   return (
-                  
                     <div key={tournament._id} className="col-12 col-md-4 col-lg-4">
                       <Link to={`/tournament/${tournament._id}`} className="text-decoration-none">
                         <div className="tournament-card shadow-sm p-3">
                           <div className="card-header">
-                            <h5 className="card-title mb-0 fw-bold text-dark text-truncate">
+                            <h5 className="card-title mb-0 fw-bold text-truncate">
                               {tournament.name || "Tournament Name"}
                             </h5>
                             <span className={`status-badge bg-${statusStyle.color}`}>
@@ -139,7 +135,10 @@ function Series() {
                 })}
                 {group.length < 3 &&
                   Array.from({ length: 3 - group.length }).map((_, index) => (
-                    <div key={`placeholder-${groupIndex}-${index}`} className="col-12 col-md-4 col-lg-4 invisible"></div>
+                    <div
+                      key={`placeholder-${groupIndex}-${index}`}
+                      className="col-12 col-md-4 col-lg-4 invisible"
+                    ></div>
                   ))}
               </div>
             ))}
@@ -162,14 +161,9 @@ function Series() {
   };
 
   return (
-    <div className="d-flex flex-column min-vh-100 bg-light">
+    <div className="d-flex flex-column min-vh-100 series-container">
       <Header />
-      <div className="container py-5 flex-grow-1">
-        {/* <h1 className="text-center mb-5 fw-bold text-dark">
-          Series & Tournaments
-        </h1> */}
-        {renderTournaments()}
-      </div>
+      <div className="container py-5 flex-grow-1">{renderTournaments()}</div>
     </div>
   );
 }

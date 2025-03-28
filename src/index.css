@@ -139,3 +139,33 @@ button:focus-visible {
 .nav-tabs {
   padding-bottom: 5px;
 }
+/* Override Bootstrap table styles */
+.table {
+  background-color: var(--card-bg) !important;
+  color: var(--text-color) !important;
+}
+
+.table thead th {
+  color: white !important;
+}
+
+.table tbody td {
+  background-color: var(--card-bg) !important;
+  color: var(--text-color) !important;
+}
+
+/* Hover effect for table rows */
+.table-hover tbody tr:hover {
+  background-color: rgba(0, 0, 0, 0.075) !important; /* Light theme hover */
+  color: var(--text-color) !important;
+}
+
+[data-theme="dark"] .table-hover tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important; /* Dark theme hover */
+}
+
+/* Ensure NRR colors are theme-aware (optional) */
+[data-theme="dark"] {
+  --badge-success-bg: #2ecc71 !important; /* Brighter green for dark theme */
+  --badge-warning-bg: #e74c3c !important; /* Brighter red for dark theme */
+}

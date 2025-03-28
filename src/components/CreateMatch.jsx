@@ -12,7 +12,7 @@ const CreateMatch = () => {
   const [scorers, setScorers] = useState([]);
   const [umpires, setUmpires] = useState([]);
   const [venues, setVenues] = useState([]);
-  const [matchTypes, setMatchTypes] = useState([]); // New state for match types
+  const [matchTypes, setMatchTypes] = useState([]);
   const [selectedTeams, setSelectedTeams] = useState([]);
   const [selectedTournament, setSelectedTournament] = useState("");
   const [overs, setOvers] = useState("");
@@ -20,7 +20,9 @@ const CreateMatch = () => {
   const [selectedUmpires, setSelectedUmpires] = useState([]);
   const [selectedVenue, setSelectedVenue] = useState("");
   const [referee, setReferee] = useState("");
-  const [matchType, setMatchType] = useState(""); // New state for match type in create form
+  const [matchType, setMatchType] = useState("");
+  const [matchDate, setMatchDate] = useState(""); // New state for match date
+  const [matchTime, setMatchTime] = useState(""); // New state for match time
   const [matches, setMatches] = useState([]);
   const [editMatch, setEditMatch] = useState(null);
   const [editData, setEditData] = useState({});
@@ -51,7 +53,6 @@ const CreateMatch = () => {
           api.get("/api/users/users?role=scorer"),
           api.get("/api/umpires"),
           api.get("/api/venues"),
-          // api.get("/api/match-types"), // Uncomment if you have an API endpoint
         ]);
 
         setTeams(teamsRes.data);
@@ -59,11 +60,6 @@ const CreateMatch = () => {
         setScorers(scorersRes.data);
         setUmpires(umpiresRes.data);
         setVenues(venuesRes.data);
-
-        // If you have an API for match types, set it here
-        // setMatchTypes(matchTypesRes.data);
-
-        // Static match types (if no API)
         setMatchTypes(["League", "Semi-Final", "Final"]);
 
         if (decoded.role === "scorer") {
@@ -128,7 +124,9 @@ const CreateMatch = () => {
     if (!overs || overs < 1) return toast.error("Enter valid overs.");
     if (!selectedTournament) return toast.error("Select a tournament.");
     if (!selectedVenue) return toast.error("Select a venue.");
-    if (!matchType) return toast.error("Select a match type."); // Validation for match type
+    if (!matchType) return toast.error("Select a match type.");
+    if (!matchDate) return toast.error("Select a match date."); // Validation for match date
+    if (!matchTime) return toast.error("Select a match time."); // Validation for match time
 
     const scorerId = assignedScorer === "" ? null : assignedScorer;
     const payload = {
@@ -139,7 +137,9 @@ const CreateMatch = () => {
       umpires: selectedUmpires,
       venue: selectedVenue,
       referee: referee || null,
-      matchType, // Add match type to payload
+      matchType,
+      matchDate, // Add match date to payload
+      matchTime, // Add match time to payload
     };
 
     api
@@ -153,7 +153,9 @@ const CreateMatch = () => {
         setSelectedUmpires([]);
         setSelectedVenue("");
         setReferee("");
-        setMatchType(""); // Reset match type
+        setMatchType("");
+        setMatchDate(""); // Reset match date
+        setMatchTime(""); // Reset match time
         setShowCreateModal(false);
         fetchMatches();
       })
@@ -184,7 +186,9 @@ const CreateMatch = () => {
     if (editData.umpires) updatePayload.umpires = editData.umpires;
     if (editData.venue) updatePayload.venue = editData.venue;
     if (editData.referee !== undefined) updatePayload.referee = editData.referee || null;
-    if (editData.matchType) updatePayload.matchType = editData.matchType; // Add match type to update payload
+    if (editData.matchType) updatePayload.matchType = editData.matchType;
+    if (editData.matchDate) updatePayload.matchDate = editData.matchDate; // Add match date to update payload
+    if (editData.matchTime) updatePayload.matchTime = editData.matchTime; // Add match time to update payload
 
     api
       .put(`/api/matches/${id}`, updatePayload)
@@ -236,7 +240,9 @@ const CreateMatch = () => {
       match.umpires?.map((u) => u.name).join(" ") || "",
       match.venue?.name || "",
       match.referee || "",
-      match.matchType || "", // Include match type in search
+      match.matchType || "",
+      match.matchDate || "", // Include match date in search
+      match.matchTime || "", // Include match time in search
     ]
       .join(" ")
       .toLowerCase()
@@ -277,7 +283,7 @@ const CreateMatch = () => {
         </div>
 
         <div style={{ overflowX: "auto", marginBottom: "20px" }}>
-          <table className="table table-bordered mt-3" style={{ minWidth: "1200px" }}>
+          <table className="table table-responsive bordered mt-3" >
             <thead className="table-dark">
               <tr>
                 <th>#</th>
@@ -285,12 +291,14 @@ const CreateMatch = () => {
                 <th>Team 2</th>
                 <th>Tournament</th>
                 <th>Overs</th>
-                <th>Type</th> {/* New column for match type */}
+                <th>Type</th>
                 <th>Status</th>
                 <th>Scorer</th>
                 <th>Umpires</th>
                 <th>Venue</th>
                 <th>Referee</th>
+                <th>Match Date</th> {/* New column for match date */}
+                <th>Match Time</th> {/* New column for match time */}
                 <th>Actions</th>
               </tr>
             </thead>
@@ -303,7 +311,7 @@ const CreateMatch = () => {
                     <td>{match.teams[1]?.name || "N/A"}</td>
                     <td>{match.tournament?.name || "N/A"}</td>
                     <td>{match.overs || "N/A"}</td>
-                    <td>{match.matchType || "N/A"}</td> {/* Display match type */}
+                    <td>{match.matchType || "N/A"}</td>
                     <td>{match.status || "N/A"}</td>
                     <td>{match.assignedScorer?.name || "Not Assigned"}</td>
                     <td>
@@ -313,6 +321,8 @@ const CreateMatch = () => {
                     </td>
                     <td>{match.venue?.name || "N/A"}</td>
                     <td>{match.referee || "N/A"}</td>
+                    <td>{match.matchDate || "N/A"}</td> {/* Display match date */}
+                    <td>{match.matchTime || "N/A"}</td> {/* Display match time */}
                     <td>
                       <button
                         className="btn btn-info btn-sm me-2"
@@ -337,10 +347,11 @@ const CreateMatch = () => {
                             umpires: match.umpires?.map((u) => u._id) || [],
                             venue: match.venue?._id,
                             referee: match.referee,
-                            matchType: match.matchType || "", // Include match type in edit data
+                            matchType: match.matchType || "",
+                            matchDate: match.matchDate || "", // Include match date in edit data
+                            matchTime: match.matchTime || "", // Include match time in edit data
                           });
                         }}
-                        disabled={userRole !== "admin"}
                       >
                         ✏ Edit
                       </button>
@@ -356,7 +367,7 @@ const CreateMatch = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="12" className="text-center">
+                  <td colSpan="14" className="text-center">
                     No matches found
                   </td>
                 </tr>
@@ -464,6 +475,28 @@ const CreateMatch = () => {
                     </select>
                   </div>
                   <div className="mb-3">
+                    <label className="form-label fw-bold">Match Date:</label>
+                    <input
+                      type="date"
+                      value={matchDate}
+                      onChange={(e) => setMatchDate(e.target.value)}
+                      className="form-control"
+                      required
+                      disabled={userRole !== "admin"}
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Match Time:</label>
+                    <input
+                      type="time"
+                      value={matchTime}
+                      onChange={(e) => setMatchTime(e.target.value)}
+                      className="form-control"
+                      required
+                      disabled={userRole !== "admin"}
+                    />
+                  </div>
+                  <div className="mb-3">
                     <label className="form-label fw-bold">Assign Scorer:</label>
                     <select
                       className="form-control"
@@ -547,6 +580,8 @@ const CreateMatch = () => {
                       setSelectedVenue("");
                       setReferee("");
                       setMatchType("");
+                      setMatchDate("");
+                      setMatchTime("");
                     }}
                   >
                     Cancel
@@ -591,6 +626,26 @@ const CreateMatch = () => {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Match Date:</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={editData.matchDate || ""}
+                    onChange={(e) => setEditData({ ...editData, matchDate: e.target.value })}
+                    disabled={userRole !== "admin"}
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Match Time:</label>
+                  <input
+                    type="time"
+                    className="form-control"
+                    value={editData.matchTime || ""}
+                    onChange={(e) => setEditData({ ...editData, matchTime: e.target.value })}
+                    disabled={userRole !== "admin"}
+                  />
                 </div>
                 <div className="mb-3">
                   <label className="form-label">Status:</label>

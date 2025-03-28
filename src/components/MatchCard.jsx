@@ -77,9 +77,7 @@ function MatchCard({ match, onClick }) {
     >
       <div className="match-card-header">
         <div className="match-info">
-          <h5 className="match-title">
-            {match.tournament?.name || "Tournament Name"}
-          </h5>
+          <h5 className="match-title">{match.tournament?.name || "Tournament Name"}</h5>
           <p className="match-details">
             {match.matchType || "Match Type"} • {match.venue?.name || "Venue TBD"}
           </p>
@@ -99,9 +97,7 @@ function MatchCard({ match, onClick }) {
             <span className="score">
               {getValue(match.runsScored, "innings1")}/{getValue(match.wickets, "innings1")}
             </span>
-            <span className="overs">
-              ({getValue(match.oversBowled, "innings1")})
-            </span>
+            <span className="overs">({getValue(match.oversBowled, "innings1")})</span>
           </div>
         </div>
 
@@ -114,16 +110,18 @@ function MatchCard({ match, onClick }) {
             <span className="score">
               {getValue(match.runsScored, "innings2")}/{getValue(match.wickets, "innings2")}
             </span>
-            <span className="overs">
-              ({getValue(match.oversBowled, "innings2")})
-            </span>
+            <span className="overs">({getValue(match.oversBowled, "innings2")})</span>
           </div>
         </div>
 
-        {/* Result */}
-        {match.status === "Completed" && (
-          <p className="match-result text-success">{getWinningMargin()}</p>
-        )}
+        {/* Result Placeholder */}
+        <div className="match-result-container">
+          {match.status === "Completed" ? (
+            <p className="match-result text-success">{getWinningMargin()}</p>
+          ) : (
+            <p className="match-result-placeholder"> </p>
+          )}
+        </div>
       </div>
     </div>
   );

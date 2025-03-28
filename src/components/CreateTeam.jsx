@@ -47,10 +47,10 @@ const CreateTeam = () => {
     if (selectedPlayers.some((p) => p._id === player._id)) {
       setSelectedPlayers(selectedPlayers.filter((p) => p._id !== player._id));
     } else {
-      if (selectedPlayers.length < 11) {
+      if (selectedPlayers.length < 17) {
         setSelectedPlayers([...selectedPlayers, player]);
       } else {
-        toast.warning("You can select a maximum of 11 players!");
+        toast.warning("You can select a maximum of 16 players!");
       }
     }
   };
@@ -64,7 +64,7 @@ const CreateTeam = () => {
       return;
     }
 
-    if (selectedPlayers.length > 11) {
+    if (selectedPlayers.length > 16) {
       toast.error("You cannot select more than 11 players!");
       return;
     }

@@ -81,6 +81,9 @@ const AdminLayout = ({ children }) => {
           <li className="nav-item">
             <Link to="/AdminPlayers" className="nav-link text-white">Players</Link>
           </li>
+          <li className="nav-item">
+            <Link to="/pages" className="nav-link text-white">pages</Link>
+          </li>
         </ul>
       </div>
 
