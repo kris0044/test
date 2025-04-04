@@ -122,7 +122,7 @@ const CreateMatch = () => {
     if (userRole !== "admin") return toast.error("Only admins can create matches.");
     if (selectedTeams.length !== 2) return toast.error("Select exactly 2 teams.");
     if (!overs || overs < 1) return toast.error("Enter valid overs.");
-    if (!selectedTournament) return toast.error("Select a tournament.");
+
     if (!selectedVenue) return toast.error("Select a venue.");
     if (!matchType) return toast.error("Select a match type.");
     if (!matchDate) return toast.error("Select a match date."); // Validation for match date
@@ -132,7 +132,7 @@ const CreateMatch = () => {
     const payload = {
       teams: selectedTeams,
       overs,
-      tournament: selectedTournament,
+      tournament: selectedTournament || null,
       assignedScorer: scorerId,
       umpires: selectedUmpires,
       venue: selectedVenue,
@@ -352,6 +352,8 @@ const CreateMatch = () => {
                             matchTime: match.matchTime || "", // Include match time in edit data
                           });
                         }}
+                        disabled={userRole !== "admin"}
+
                       >
                         ✏ Edit
                       </button>
@@ -413,7 +415,6 @@ const CreateMatch = () => {
                       className="form-control"
                       value={selectedTournament}
                       onChange={(e) => setSelectedTournament(e.target.value)}
-                      required
                       disabled={userRole !== "admin"}
                     >
                       <option value="">Select a Tournament</option>

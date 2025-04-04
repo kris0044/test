@@ -6,6 +6,7 @@ import "../index.css";
 import api from "../utility/axiosInterceptor.js";
 import LoadingSpinner from "./LoadingSpinner";
 import { motion } from "framer-motion";
+import Footer from "./Footer.jsx";
 
 function TournamentDetail() {
   const { tournamentId } = useParams();
@@ -828,6 +829,7 @@ function TournamentDetail() {
           )}
         </motion.div>
       </div>
+      <Footer/>
     </div>
   );
 }

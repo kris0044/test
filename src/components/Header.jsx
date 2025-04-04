@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "../index.css";
-import { FaRegUserCircle } from "react-icons/fa";
 
 function Header() {
   const [darkMode, setDarkMode] = useState(() => {
@@ -10,8 +9,7 @@ function Header() {
     return savedTheme ? savedTheme === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
 
-  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem("username"));
-  const username = localStorage.getItem("username");
+
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
@@ -20,10 +18,6 @@ function Header() {
 
   const toggleTheme = () => setDarkMode((prev) => !prev);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    setIsLoggedIn(false);
-  };
 
   return (
     <header
@@ -53,32 +47,6 @@ function Header() {
           <Link to="/stats" className="nav-link text-white mx-2">
             Stats
           </Link>
-
-          {isLoggedIn ? (
-            <div className="dropdown">
-              <button
-                className="btn btn-light dropdown-toggle"
-                type="button"
-                id="userDropdown"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                <FaRegUserCircle className="mb-1 mx-1" />
-                {username}
-              </button>
-              <ul className="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                <li>
-                  <button className="dropdown-item" onClick={handleLogout}>
-                    Logout
-                  </button>
-                </li>
-              </ul>
-            </div>
-          ) : (
-            <Link to="/login" className="nav-link text-white mx-3">
-              Login
-            </Link>
-          )}
 
           <button
             className={`btn ${darkMode ? "btn-outline-light" : "btn-outline-dark"} d-flex align-items-center mx-3`}

@@ -6,6 +6,8 @@ import Header from "./Header";
 import api from "../utility/axiosInterceptor.js";
 import { motion } from "framer-motion";
 import LoadingSpinner from "./LoadingSpinner";
+import Footer from "./Footer";
+
 
 const socket = io(api.defaults.baseURL, {
   reconnection: true,
@@ -518,6 +520,7 @@ function Fixtures() {
           </motion.div>
         )}
       </div>
+      <Footer/>
     </div>
   );
 }

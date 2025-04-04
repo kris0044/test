@@ -3,7 +3,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import Header from "./Header";
 import LoadingSpinner from "./LoadingSpinner";
 import api from "../utility/axiosInterceptor.js";
-
+import Footer from "./Footer.jsx";
 const Stats = () => {
   const [stats, setStats] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -347,6 +347,7 @@ const Stats = () => {
         )}
         {showModal && <div className="modal-backdrop fade show"></div>}
       </div>
+      <Footer/>
     </div>
   );
 };

@@ -5,7 +5,11 @@ import "react-toastify/dist/ReactToastify.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 import AdminLayout from "./AdminLayout";
 import api from "../utility/axiosInterceptor.js";
-
+import { io } from "socket.io-client";
+const socket = io("http://localhost:5000", { // Replace with your backend URL
+  reconnection: true,
+  reconnectionAttempts: 5,
+});
 const ScoreMatch = () => {
   const { matchId } = useParams();
   const navigate = useNavigate();
@@ -88,8 +92,16 @@ const ScoreMatch = () => {
       }
     };
     fetchMatchData();
-  }, [matchId, navigate]);
+    socket.on("scoreUpdate", (newScore) => {
+      setScores((prev) => [...prev, newScore]);
+      recalculateMatchState([...scores, newScore], match);
+    });
 
+    // Cleanup on unmount
+    return () => {
+      socket.off("scoreUpdate");
+    };
+  }, [matchId, navigate]);
   const updateMatchState = async (updatedState) => {
     try {
       await api.put(`/api/matches/${matchId}/state`, updatedState);
@@ -108,7 +120,7 @@ const ScoreMatch = () => {
     let initialDismissed = {};
     let initialRetiredHurt = {};
     let initialStats = {};
-
+  
     for (let i = 1; i <= totalInnings; i++) {
       initialRunsScored[`innings${i}`] = 0;
       initialWickets[`innings${i}`] = 0;
@@ -120,10 +132,10 @@ const ScoreMatch = () => {
         batting: {}, 
         bowling: {}, 
         fielding: {}, 
-        extras: { wides: {}, noBalls: {} } 
+        extras: { wides: {}, noBalls: {}, byes: 0, legByes: 0 } // Added byes and legByes
       };
     }
-
+  
     setRunsScored(initialRunsScored);
     setWickets(initialWickets);
     setOvers(initialOvers);
@@ -131,12 +143,12 @@ const ScoreMatch = () => {
     setDismissedBatsmen(initialDismissed);
     setRetiredHurtPlayers(initialRetiredHurt);
     setMatchStats(initialStats);
-
+  
     recalculateMatchState(scoresData, matchData);
-
+  
     const battingFirst = tossChoice === "bat" ? tossWinner : (tossWinner === matchData.teams[0]._id ? matchData.teams[1] : matchData.teams[0]);
     const bowlingFirst = battingFirst === matchData.teams[0] ? matchData.teams[1] : matchData.teams[0];
-
+  
     const initialState = {
       currentInnings: 1,
       battingTeam: battingFirst?._id || matchData.teams[0]._id,
@@ -157,7 +169,7 @@ const ScoreMatch = () => {
       stopReason: "",
     };
     updateMatchState(initialState);
-
+  
     setBattingTeam(battingFirst || matchData.teams[0]);
     setBowlingTeam(bowlingFirst || matchData.teams[1]);
   };
@@ -171,7 +183,7 @@ const ScoreMatch = () => {
     let dismissed = {};
     let retiredHurt = {};
     let stats = {};
-
+  
     for (let i = 1; i <= totalInnings; i++) {
       runs[`innings${i}`] = 0;
       wickets[`innings${i}`] = 0;
@@ -183,15 +195,15 @@ const ScoreMatch = () => {
         batting: {}, 
         bowling: {}, 
         fielding: {}, 
-        extras: { wides: {}, noBalls: {} } 
+        extras: { wides: {}, noBalls: {}, byes: 0, legByes: 0 } // Added byes and legByes
       };
     }
-
+  
     scoresData.forEach((score) => {
       const inningsKey = `innings${score.innings}`;
       const batsmanId = score.batsman?._id;
       const bowlerId = score.bowler?._id;
-
+  
       if (batsmanId) {
         stats[inningsKey].batting[batsmanId] = stats[inningsKey].batting[batsmanId] || {
           runs: 0,
@@ -209,7 +221,7 @@ const ScoreMatch = () => {
           wicketTypes: {},
         };
       }
-
+  
       runs[inningsKey] += score.runs;
       if (score.wicket) {
         wickets[inningsKey]++;
@@ -238,11 +250,10 @@ const ScoreMatch = () => {
           });
         }
       }
-
+  
       if (score.ballType === "legal") {
         balls[inningsKey]++;
         overs[inningsKey] = Math.floor(balls[inningsKey] / 6) + ((balls[inningsKey] % 6) / 10);
-
         if (batsmanId) {
           stats[inningsKey].batting[batsmanId].balls++;
           stats[inningsKey].batting[batsmanId].runs += score.runs;
@@ -255,7 +266,7 @@ const ScoreMatch = () => {
           stats[inningsKey].bowling[bowlerId].runs += score.runs;
         }
       }
-
+  
       if (score.ballType === "wide" && bowlerId) {
         stats[inningsKey].extras.wides[bowlerId] =
           (stats[inningsKey].extras.wides[bowlerId] || 0) + score.runs;
@@ -272,8 +283,20 @@ const ScoreMatch = () => {
           }
         }
       }
+      if (score.ballType === "bye" && bowlerId) {
+        stats[inningsKey].extras.byes += score.runs;
+        stats[inningsKey].bowling[bowlerId].runs += score.runs;
+        balls[inningsKey]++;
+        overs[inningsKey] = Math.floor(balls[inningsKey] / 6) + ((balls[inningsKey] % 6) / 10);
+      }
+      if (score.ballType === "legBye" && bowlerId) {
+        stats[inningsKey].extras.legByes += score.runs;
+        stats[inningsKey].bowling[bowlerId].runs += score.runs;
+        balls[inningsKey]++;
+        overs[inningsKey] = Math.floor(balls[inningsKey] / 6) + ((balls[inningsKey] % 6) / 10);
+      }
     });
-
+  
     setRunsScored(runs);
     setWickets(wickets);
     setOvers(overs);
@@ -288,24 +311,24 @@ const ScoreMatch = () => {
       toast.error("Select batsmen and bowler first!");
       return;
     }
-
+  
     const currentOversKey = `innings${currentInnings}`;
     const currentBalls = ballsBowled[currentOversKey] || 0;
     const completedOvers = Math.floor(currentBalls / 6);
     const maxWickets = match.maxWickets || 10;
-
+  
     if (completedOvers >= match.overs || wickets[currentOversKey] >= maxWickets) {
       toast.info("Innings completed. No more scoring allowed.");
       await checkInningsOrMatchEnd();
       return;
     }
-
+  
     const ballsInOver = currentBalls % 6;
     const scoreEntry = {
-      match: matchId,
-      team: battingTeam._id,
-      batsman: currentBatsmen[0]?._id,
-      bowler: currentBowler?._id,
+      match: matchId || "",
+      team: battingTeam?._id || "",
+      batsman: currentBatsmen[0]?._id || null,
+      bowler: currentBowler?._id || null,
       runs: 0,
       ball: ballsInOver + 1,
       wicket: false,
@@ -318,9 +341,9 @@ const ScoreMatch = () => {
       outBatsman: null,
       timestamp: new Date().toISOString(),
     };
-
+  
     let isLegalDelivery = true;
-
+  
     switch (type) {
       case "runs":
         scoreEntry.runs = value;
@@ -396,44 +419,61 @@ const ScoreMatch = () => {
         }));
         setCurrentBatsmen([null, currentBatsmen[1]]);
         break;
+      case "bye":
+        scoreEntry.runs = value;
+        scoreEntry.ballType = "bye";
+        setRunsScored((prev) => ({
+          ...prev,
+          [currentOversKey]: (prev[currentOversKey] || 0) + value,
+        }));
+        if (value % 2 === 1) swapEnds();
+        break;
+      case "legBye":
+        scoreEntry.runs = value;
+        scoreEntry.ballType = "legBye";
+        setRunsScored((prev) => ({
+          ...prev,
+          [currentOversKey]: (prev[currentOversKey] || 0) + value,
+        }));
+        if (value % 2 === 1) swapEnds();
+        break;
       default:
         break;
     }
-
+  
     try {
-      if (type !== "retiredHurt") {
-        const response = await api.post("/api/scores", scoreEntry);
-        setScores((prev) => [...prev, response.data]);
-
-        if (isLegalDelivery) {
-          setBallsBowled((prev) => {
-            const newBalls = (prev[currentOversKey] || 0) + 1;
-            return { ...prev, [currentOversKey]: newBalls };
-          });
-          setOvers((prev) => {
-            const newBalls = (ballsBowled[currentOversKey] || 0) + 1;
-            const newOvers = Math.floor(newBalls / 6) + ((newBalls % 6) / 10);
-            return { ...prev, [currentOversKey]: newOvers };
-          });
-
-          const newBallsCount = currentBalls + 1;
-          if (newBallsCount % 6 === 0) {
-            setNewOverStarted(true);
-            setPreviousBowler(currentBowler);
-            setCurrentBowler(null);
-            swapEnds();
-            toast.info("Over completed.");
-            if (Math.floor(newBallsCount / 6) >= match.overs || wickets[currentOversKey] >= maxWickets) {
-              await checkInningsOrMatchEnd();
-            }
-          } else {
-            setNewOverStarted(false);
+      console.log("Score Entry Payload:", scoreEntry); // Debug payload
+      const response = await api.post("/api/scores", scoreEntry);
+      setScores((prev) => [...prev, response.data]);
+  
+      if (isLegalDelivery || type === "bye" || type === "legBye") {
+        setBallsBowled((prev) => {
+          const newBalls = (prev[currentOversKey] || 0) + 1;
+          return { ...prev, [currentOversKey]: newBalls };
+        });
+        setOvers((prev) => {
+          const newBalls = (ballsBowled[currentOversKey] || 0) + 1;
+          const newOvers = Math.floor(newBalls / 6) + ((newBalls % 6) / 10);
+          return { ...prev, [currentOversKey]: newOvers };
+        });
+  
+        const newBallsCount = currentBalls + 1;
+        if (newBallsCount % 6 === 0) {
+          setNewOverStarted(true);
+          setPreviousBowler(currentBowler);
+          setCurrentBowler(null);
+          swapEnds();
+          toast.info("Over completed.");
+          if (Math.floor(newBallsCount / 6) >= match.overs || wickets[currentOversKey] >= maxWickets) {
+            await checkInningsOrMatchEnd();
           }
+        } else {
+          setNewOverStarted(false);
         }
-
-        await checkTargetAchieved();
       }
-
+  
+      await checkTargetAchieved();
+  
       updateMatchState({
         currentBatsmen: [currentBatsmen[0]?._id, currentBatsmen[1]?._id],
         currentBowler: currentBowler?._id,
@@ -446,11 +486,11 @@ const ScoreMatch = () => {
         dismissedBatsmen,
         retiredHurtPlayers,
         matchStats,
-        playing11, // Add this
+        playing11,
       });
     } catch (err) {
       toast.error("Error saving score");
-      console.error("Score error:", err);
+      console.error("Score error:", err.response?.data || err.message); // Detailed error logging
     }
   };
 
@@ -912,13 +952,14 @@ const handleSubmitPlaying11 = async () => {
 };
 
 
-  const calculateExtras = (innings) => {
-    const inningsKey = `innings${innings}`;
-    const wides = Object.values(matchStats[inningsKey]?.extras.wides || {}).reduce((sum, val) => sum + val, 0);
-    const noBalls = Object.values(matchStats[inningsKey]?.extras.noBalls || {}).reduce((sum, val) => sum + val, 0);
-    return wides + noBalls;
-  };
-
+const calculateExtras = (innings) => {
+  const inningsKey = `innings${innings}`;
+  const wides = Object.values(matchStats[inningsKey]?.extras.wides || {}).reduce((sum, val) => sum + val, 0);
+  const noBalls = Object.values(matchStats[inningsKey]?.extras.noBalls || {}).reduce((sum, val) => sum + val, 0);
+  const byes = matchStats[inningsKey]?.extras.byes || 0;
+  const legByes = matchStats[inningsKey]?.extras.legByes || 0;
+  return wides + noBalls + byes + legByes;
+};
   if (!match) return <div className="text-center mt-5">Loading...</div>;
 
   return (
@@ -1231,15 +1272,117 @@ const handleSubmitPlaying11 = async () => {
                   />
                 </div>
                 <div className="d-flex gap-2">
-                  {match.status === "Ongoing" && (
-                    <button 
-                      className="btn btn-warning" 
-                      onClick={handleStopMatch}
-                      disabled={!stopReason.trim()}
-                    >
-                      Stop Match
-                    </button>
-                  )}
+                {match.status === "Ongoing" && (
+  <div className="card mb-4">
+    <div className="card-body">
+      <h4 className="card-title">Score Ball - Innings {currentInnings}</h4>
+      <div className="d-flex flex-wrap gap-2 mb-3">
+        {[0, 1, 2, 3, 4, 6].map((run) => (
+          <button
+            key={`run-${run}`}
+            className="btn btn-primary score-btn"
+            onClick={() => handleScore("runs", run)}
+            disabled={!currentBatsmen[0] || !currentBowler}
+          >
+            {run}
+          </button>
+        ))}
+      </div>
+      <div className="d-flex flex-wrap gap-2 mb-3">
+        <button
+          className="btn btn-warning score-btn"
+          onClick={() => handleScore("wide")}
+        >
+          Wide
+        </button>
+        <button
+          className="btn btn-warning score-btn"
+          onClick={() => handleWicketClick("wide")}
+        >
+          Wide + Wicket
+        </button>
+        {[1, 2, 3, 4, 5, 6].map((extra) => (
+          <button
+            key={`wide-${extra}`}
+            className="btn btn-warning score-btn"
+            onClick={() => handleScore("wide", extra)}
+          >
+            Wide+{extra}
+          </button>
+        ))}
+      </div>
+      <div className="d-flex flex-wrap gap-2 mb-3">
+        <button
+          className="btn btn-danger score-btn"
+          onClick={() => handleScore("noBall", 0)}
+        >
+          No Ball
+        </button>
+        <button
+          className="btn btn-danger score-btn"
+          onClick={() => handleWicketClick("noBall")}
+        >
+          No Ball + Wicket
+        </button>
+        {[1, 2, 3, 4, 5, 6].map((extra) => (
+          <button
+            key={`noBall-${extra}`}
+            className="btn btn-danger score-btn"
+            onClick={() => handleScore("noBall", extra)}
+          >
+            No Ball+{extra}
+          </button>
+        ))}
+      </div>
+      <div className="d-flex flex-wrap gap-2 mb-3">
+        {[1, 2, 3, 4].map((run) => (
+          <button
+            key={`bye-${run}`}
+            className="btn btn-info score-btn"
+            onClick={() => handleScore("bye", run)}
+            disabled={!currentBatsmen[0] || !currentBowler}
+          >
+            Bye {run}
+          </button>
+        ))}
+      </div>
+      <div className="d-flex flex-wrap gap-2 mb-3">
+        {[1, 2, 3, 4].map((run) => (
+          <button
+            key={`legBye-${run}`}
+            className="btn btn-info score-btn"
+            onClick={() => handleScore("legBye", run)}
+            disabled={!currentBatsmen[0] || !currentBowler}
+          >
+            LB {run}
+          </button>
+        ))}
+      </div>
+      <div className="d-flex flex-wrap gap-2">
+        <button
+          className="btn btn-danger score-btn"
+          onClick={() => handleWicketClick()}
+          disabled={!currentBatsmen[0] || !currentBowler}
+        >
+          Wicket
+        </button>
+        <button
+          className="btn btn-info score-btn"
+          onClick={() => handleScore("retiredHurt")}
+          disabled={!currentBatsmen[0]}
+        >
+          Retired Hurt
+        </button>
+        <button
+          className="btn btn-warning score-btn"
+          onClick={handleCompleteInnings}
+        >
+          Complete Innings
+        </button>
+      </div>
+    </div>
+  </div>
+)}
                   {match.status === "Stopped" && (
                     <>
                       <button className="btn btn-success" onClick={handleResumeMatch}>
@@ -1344,292 +1487,210 @@ const handleSubmitPlaying11 = async () => {
           </>
         )}
 
-        <div className="card mb-4">
-          <div className="card-body">
-            <h4 className="card-title">Score Summary</h4>
-            <div className="d-flex justify-content-between mb-3">
-              <div>
-                <input
-                  type="checkbox"
-                  checked={selectedScores.length === scores.length && scores.length > 0}
-                  onChange={handleSelectAllScores}
-                />
-                <label className="ms-2">Select All</label>
-              </div>
-              <div>
-                <button className="btn btn-danger me-2" onClick={handleDeleteSelected}>
-                  Delete Selected
-                </button>
-                <button className="btn btn-danger" onClick={handleDeleteAll}>
-                  Delete All Scores
-                </button>
-              </div>
-            </div>
-            <div className="table-responsive">
-              <table className="table table-striped table-bordered">
-                <thead className="table-dark">
-                  <tr>
-                    <th>Select</th>
-                    <th>Innings</th>
-                    <th>Team</th>
-                    <th>Batsman</th>
-                    <th>Bowler</th>
-                    <th>Runs</th>
-                    <th>Ball</th>
-                    <th>Wicket</th>
-                    <th>Wicket Type</th>
-                    <th>Runs on Wicket</th>
-                    <th>Out Batsman</th>
-                    <th>Fielders</th>
-                    <th>Over</th>
-                    <th>Time</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
+<div className="card mb-4">
+  <div className="card-body">
+    <h4 className="card-title">Score Summary</h4>
+    <div className="d-flex justify-content-between mb-3">
+      <div>
+        <input
+          type="checkbox"
+          checked={selectedScores.length === scores.length && scores.length > 0}
+          onChange={handleSelectAllScores}
+        />
+        <label className="ms-2">Select All</label>
+      </div>
+      <div>
+        <button className="btn btn-danger me-2" onClick={handleDeleteSelected}>
+          Delete Selected
+        </button>
+        <button className="btn btn-danger" onClick={handleDeleteAll}>
+          Delete All Scores
+        </button>
+      </div>
+    </div>
+    <div className="table-responsive">
+      <table className="table table-striped table-bordered">
+        <thead className="table-dark"><tr><th>Select</th><th>Innings</th><th>Team</th><th>Batsman</th><th>Bowler</th><th>Runs</th><th>Ball</th><th>Wicket</th><th>Wicket Type</th><th>Runs on Wicket</th><th>Out Batsman</th><th>Fielders</th><th>Over</th><th>Time</th><th>Actions</th></tr></thead>
+        <tbody>
+          {scores.length > 0 ? (
+            scores.map((score) => (
+              <tr key={score._id}>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={selectedScores.includes(score._id)}
+                    onChange={() => handleSelectScore(score._id)}
+                  />
+                </td>
+                <td>{score.innings}</td>
+                <td>{score.team?.name || "N/A"}</td>
+                <td>{score.batsman?.name || "N/A"}</td>
+                <td>{score.bowler?.name || "N/A"}</td>
+                <td>{score.runs}</td>
+                <td>{score.ball}</td>
+                <td>{score.wicket ? "Yes" : "No"}</td>
+                <td>{score.wicketType || "-"}</td>
+                <td>{score.runsOnWicket || "-"}</td>
+                <td>{score.outBatsman ? getPlayerName(score.outBatsman) : "-"}</td>
+                <td>
+                  {score.fielders?.map((f) => (typeof f === "string" ? getPlayerName(f) : f.name)).join(", ") || "-"}
+                </td>
+                <td>{score.over}</td>
+                <td>{new Date(score.timestamp).toLocaleTimeString()}</td>
+                <td>
+                  <button
+                    className="btn btn-warning btn-sm me-2"
+                    onClick={() => setEditScore({ ...score })}
+                  >
+                    ✏
+                  </button>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={() => handleDeleteScore(score._id)}
+                  >
+                    ❌
+                  </button>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan="15" className="text-center">
+                No scores recorded yet
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div className="card mb-4">
+  <div className="card-body">
+    <h4 className="card-title">Player Statistics</h4>
+    <div className="row">
+      {Array.from({ length: match.format === "Test" ? 4 : 2 }, (_, i) => i + 1).map(
+        (inning) => (
+          <div key={inning} className="col-md-6 mb-4">
+            <h5>Innings {inning} - {(inning === 1 ? battingTeam : bowlingTeam)?.name || match.teams[(inning - 1) % 2]?.name || "N/A"}</h5>
+            <div className="table-responsive mb-3">
+              <table className="table table-bordered">
                 <tbody>
-                  {scores.length > 0 ? (
-                    scores.map((score) => (
-                      <tr key={score._id}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selectedScores.includes(score._id)}
-                            onChange={() => handleSelectScore(score._id)}
-                          />
-                        </td>
-                        <td>{score.innings}</td>
-                        <td>{score.team?.name || "N/A"}</td>
-                        <td>{score.batsman?.name || "N/A"}</td>
-                        <td>{score.bowler?.name || "N/A"}</td>
-                        <td>{score.runs}</td>
-                        <td>{score.ball}</td>
-                        <td>{score.wicket ? "Yes" : "No"}</td>
-                        <td>{score.wicketType || "-"}</td>
-                        <td>{score.runsOnWicket || "-"}</td>
-                        <td>{score.outBatsman ? getPlayerName(score.outBatsman) : "-"}</td>
-                        <td>
-                          {score.fielders?.map((f) => (typeof f === "string" ? getPlayerName(f) : f.name)).join(", ") || "-"}
-                        </td>
-                        <td>{score.over}</td>
-                        <td>{new Date(score.timestamp).toLocaleTimeString()}</td>
-                        <td>
-                          <button
-                            className="btn btn-warning btn-sm me-2"
-                            onClick={() => setEditScore({ ...score })}
-                          >
-                            ✏
-                          </button>
-                          <button
-                            className="btn btn-danger btn-sm"
-                            onClick={() => handleDeleteScore(score._id)}
-                          >
-                            ❌
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                  <tr><td><strong>Total</strong></td><td>{runsScored[`innings${inning}`] || 0}/{wickets[`innings${inning}`] || 0}</td><td>({Math.floor(overs[`innings${inning}`] || 0)}.{Math.round((overs[`innings${inning}`] % 1 || 0) * 10)} overs)</td></tr>
+                  <tr><td><strong>Extras</strong></td><td>{calculateExtras(inning)}</td><td>(Wides: {Object.values(matchStats[`innings${inning}`]?.extras.wides || {}).reduce((sum, val) => sum + val, 0)}, No Balls: {Object.values(matchStats[`innings${inning}`]?.extras.noBalls || {}).reduce((sum, val) => sum + val, 0)}, Byes: {matchStats[`innings${inning}`]?.extras.byes || 0}, Leg Byes: {matchStats[`innings${inning}`]?.extras.legByes || 0})</td></tr>
+                  <tr><td><strong>Retired Hurt</strong></td><td colSpan="2">{retiredHurtPlayers[`innings${inning}`]?.map(id => getPlayerName(id)).join(", ") || "None"}</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h6>Batting ({(inning === 1 ? battingTeam : bowlingTeam)?.name || match.teams[(inning - 1) % 2]?.name || "N/A"})</h6>
+            <div className="table-responsive mb-3">
+              <table className="table table-bordered">
+                <thead className="table-dark"><tr><th>Player</th><th>Runs</th><th>Balls</th><th>1s</th><th>2s</th><th>3s</th><th>4s</th><th>5s</th><th>6s</th><th>SR</th></tr></thead>
+                <tbody>
+                  {Object.entries(matchStats[`innings${inning}`]?.batting || {}).length > 0 ? (
+                    Object.entries(matchStats[`innings${inning}`].batting).map(
+                      ([id, stats]) => (
+                        <tr key={`inning${inning}-batting-${id}`}>
+                          <td>{getPlayerName(id)}</td>
+                          <td>{stats.runs}</td>
+                          <td>{stats.balls}</td>
+                          <td>{stats.runsBreakdown[1]}</td>
+                          <td>{stats.runsBreakdown[2]}</td>
+                          <td>{stats.runsBreakdown[3]}</td>
+                          <td>{stats.runsBreakdown[4]}</td>
+                          <td>{stats.runsBreakdown[5]}</td>
+                          <td>{stats.runsBreakdown[6]}</td>
+                          <td>
+                            {stats.balls > 0
+                              ? ((stats.runs / stats.balls) * 100).toFixed(2)
+                              : "0.00"}
+                          </td>
+                        </tr>
+                      )
+                    )
                   ) : (
                     <tr>
-                      <td colSpan="15" className="text-center">
-                        No scores recorded yet
-                      </td>
+                      <td colSpan="10">No batting stats yet</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <h6>Bowling ({(inning === 1 ? bowlingTeam : battingTeam)?.name || match.teams[inning % 2]?.name || "N/A"})</h6>
+            <div className="table-responsive mb-3">
+              <table className="table table-bordered">
+                <thead className="table-dark"><tr><th>Player</th><th>Overs</th><th>Runs</th><th>Wickets</th><th>Bowled</th><th>Caught</th><th>Stumped</th><th>Extras</th><th>Wides</th><th>No Balls</th><th>Wickets Taken</th><th>Econ</th></tr></thead>
+                <tbody>
+                  {Object.entries(matchStats[`innings${inning}`]?.bowling || {}).length > 0 ? (
+                    Object.entries(matchStats[`innings${inning}`].bowling).map(
+                      ([id, stats]) => (
+                        <tr key={`inning${inning}-bowling-${id}`}>
+                          <td>{getPlayerName(id)}</td>
+                          <td>{(stats.balls / 6).toFixed(1)}</td>
+                          <td>{stats.runs}</td>
+                          <td>{stats.wickets}</td>
+                          <td>{stats.wicketTypes?.bowled || 0}</td>
+                          <td>{stats.wicketTypes?.caught || 0}</td>
+                          <td>{stats.wicketTypes?.stumped || 0}</td>
+                          <td>
+                            {(matchStats[`innings${inning}`].extras.wides[id] || 0) +
+                              (matchStats[`innings${inning}`].extras.noBalls[id] || 0)}
+                          </td>
+                          <td>{matchStats[`innings${inning}`].extras.wides[id] || 0}</td>
+                          <td>{matchStats[`innings${inning}`].extras.noBalls[id] || 0}</td>
+                          <td>
+                            {stats.wicketsTaken.map((w) => getPlayerName(w)).join(", ") || "-"}
+                          </td>
+                          <td>
+                            {stats.balls > 0
+                              ? (stats.runs / (stats.balls / 6)).toFixed(2)
+                              : "0.00"}
+                          </td>
+                        </tr>
+                      )
+                    )
+                  ) : (
+                    <tr>
+                      <td colSpan="12">No bowling stats yet</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <h6>Fielding ({(inning === 1 ? bowlingTeam : battingTeam)?.name || match.teams[inning % 2]?.name || "N/A"})</h6>
+            <div className="table-responsive">
+              <table className="table table-bordered">
+                <thead className="table-dark"><tr><th>Player</th><th>Catches</th><th>Stumpings</th><th>Run Outs</th></tr></thead>
+                <tbody>
+                  {Object.entries(matchStats[`innings${inning}`]?.fielding || {}).length > 0 ? (
+                    Object.entries(matchStats[`innings${inning}`].fielding).map(
+                      ([id, stats]) => (
+                        <tr key={`inning${inning}-fielding-${id}`}>
+                          <td>{getPlayerName(id)}</td>
+                          <td>{stats.catches}</td>
+                          <td>{stats.stumpings}</td>
+                          <td>{stats.runOuts}</td>
+                        </tr>
+                      )
+                    )
+                  ) : (
+                    <tr>
+                      <td colSpan="4">No fielding stats yet</td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
-        </div>
-
-        <div className="card mb-4">
-          <div className="card-body">
-            <h4 className="card-title">Player Statistics</h4>
-            <div className="row">
-              {Array.from({ length: match.format === "Test" ? 4 : 2 }, (_, i) => i + 1).map(
-                (inning) => (
-                  <div key={inning} className="col-md-6 mb-4">
-                    <h5>Innings {inning} - {(inning === 1 ? battingTeam : bowlingTeam)?.name || match.teams[(inning - 1) % 2]?.name || "N/A"}</h5>
-                    <div className="table-responsive mb-3">
-                      <table className="table table-bordered">
-                        <tbody>
-                          <tr>
-                            <td><strong>Total</strong></td>
-                            <td>
-                              {runsScored[`innings${inning}`] || 0}/
-                              {wickets[`innings${inning}`] || 0}
-                            </td>
-                            <td>
-                              ({Math.floor(overs[`innings${inning}`] || 0)}.
-                              {Math.round((overs[`innings${inning}`] % 1 || 0) * 10)} overs)
-                            </td>
-                          </tr>
-                          <tr>
-                            <td><strong>Extras</strong></td>
-                            <td>{calculateExtras(inning)}</td>
-                            <td>
-                              (Wides:{" "}
-                              {Object.values(
-                                matchStats[`innings${inning}`]?.extras.wides || {}
-                              ).reduce((sum, val) => sum + val, 0)}
-                              , No Balls:{" "}
-                              {Object.values(
-                                matchStats[`innings${inning}`]?.extras.noBalls || {}
-                              ).reduce((sum, val) => sum + val, 0)}
-                              )
-                            </td>
-                          </tr>
-                          <tr>
-                            <td><strong>Retired Hurt</strong></td>
-                            <td colSpan="2">
-                              {retiredHurtPlayers[`innings${inning}`]?.map(id => getPlayerName(id)).join(", ") || "None"}
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <h6>Batting ({(inning === 1 ? battingTeam : bowlingTeam)?.name || match.teams[(inning - 1) % 2]?.name || "N/A"})</h6>
-                    <div className="table-responsive mb-3">
-                      <table className="table table-bordered">
-                      <thead className="table-dark">
-                      <tr>
-                            <th>Player</th>
-                            <th>Runs</th>
-                            <th>Balls</th>
-                            <th>1s</th>
-                            <th>2s</th>
-                            <th>3s</th>
-                            <th>4s</th>
-                            <th>5s</th>
-                            <th>6s</th>
-                            <th>SR</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(matchStats[`innings${inning}`]?.batting || {}).length > 0 ? (
-                            Object.entries(matchStats[`innings${inning}`].batting).map(
-                              ([id, stats]) => (
-                                <tr key={`inning${inning}-batting-${id}`}>
-                                  <td>{getPlayerName(id)}</td>
-                                  <td>{stats.runs}</td>
-                                  <td>{stats.balls}</td>
-                                  <td>{stats.runsBreakdown[1]}</td>
-                                  <td>{stats.runsBreakdown[2]}</td>
-                                  <td>{stats.runsBreakdown[3]}</td>
-                                  <td>{stats.runsBreakdown[4]}</td>
-                                  <td>{stats.runsBreakdown[5]}</td>
-                                  <td>{stats.runsBreakdown[6]}</td>
-                                  <td>
-                                    {stats.balls > 0
-                                      ? ((stats.runs / stats.balls) * 100).toFixed(2)
-                                      : "0.00"}
-                                  </td>
-                                </tr>
-                              )
-                            )
-                          ) : (
-                            <tr>
-                              <td colSpan="10">No batting stats yet</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <h6>Bowling ({(inning === 1 ? bowlingTeam : battingTeam)?.name || match.teams[inning % 2]?.name || "N/A"})</h6>
-                    <div className="table-responsive mb-3">
-                      <table className="table table-bordered">
-                      <thead className="table-dark">
-                      <tr>
-                            <th>Player</th>
-                            <th>Overs</th>
-                            <th>Runs</th>
-                            <th>Wickets</th>
-                            <th>Bowled</th>
-                            <th>Caught</th>
-                            <th>Stumped</th>
-                            <th>Extras</th>
-                            <th>Wides</th>
-                            <th>No Balls</th>
-                            <th>Wickets Taken</th>
-                            <th>Econ</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(matchStats[`innings${inning}`]?.bowling || {}).length > 0 ? (
-                            Object.entries(matchStats[`innings${inning}`].bowling).map(
-                              ([id, stats]) => (
-                                <tr key={`inning${inning}-bowling-${id}`}>
-                                  <td>{getPlayerName(id)}</td>
-                                  <td>{(stats.balls / 6).toFixed(1)}</td>
-                                  <td>{stats.runs}</td>
-                                  <td>{stats.wickets}</td>
-                                  <td>{stats.wicketTypes?.bowled || 0}</td>
-                                  <td>{stats.wicketTypes?.caught || 0}</td>
-                                  <td>{stats.wicketTypes?.stumped || 0}</td>
-                                  <td>
-                                    {(matchStats[`innings${inning}`].extras.wides[id] || 0) +
-                                      (matchStats[`innings${inning}`].extras.noBalls[id] || 0)}
-                                  </td>
-                                  <td>{matchStats[`innings${inning}`].extras.wides[id] || 0}</td>
-                                  <td>{matchStats[`innings${inning}`].extras.noBalls[id] || 0}</td>
-                                  <td>
-                                    {stats.wicketsTaken.map((w) => getPlayerName(w)).join(", ") || "-"}
-                                  </td>
-                                  <td>
-                                    {stats.balls > 0
-                                      ? (stats.runs / (stats.balls / 6)).toFixed(2)
-                                      : "0.00"}
-                                  </td>
-                                </tr>
-                              )
-                            )
-                          ) : (
-                            <tr>
-                              <td colSpan="12">No bowling stats yet</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <h6>Fielding ({(inning === 1 ? bowlingTeam : battingTeam)?.name || match.teams[inning % 2]?.name || "N/A"})</h6>
-                    <div className="table-responsive">
-                      <table className="table table-bordered">
-                      <thead className="table-dark">
-                          <tr>
-                            <th>Player</th>
-                            <th>Catches</th>
-                            <th>Stumpings</th>
-                            <th>Run Outs</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(matchStats[`innings${inning}`]?.fielding || {}).length > 0 ? (
-                            Object.entries(matchStats[`innings${inning}`].fielding).map(
-                              ([id, stats]) => (
-                                <tr key={`inning${inning}-fielding-${id}`}>
-                                  <td>{getPlayerName(id)}</td>
-                                  <td>{stats.catches}</td>
-                                  <td>{stats.stumpings}</td>
-                                  <td>{stats.runOuts}</td>
-                                </tr>
-                              )
-                            )
-                          ) : (
-                            <tr>
-                              <td colSpan="4">No fielding stats yet</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )
-              )}
-            </div>
-          </div>
-        </div>
+        )
+      )}
+    </div>
+  </div>
+</div>
 
         {wicketModal && (
           <div className="modal d-block bg-dark bg-opacity-50" style={{ top: 0, left: 0, right: 0, bottom: 0 }}>

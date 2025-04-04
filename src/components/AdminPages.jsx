@@ -4,13 +4,28 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import AdminLayout from "./AdminLayout";
 import api from "../utility/axiosInterceptor.js";
-import { EditorContent, useEditor } from "@tiptap/react"; // TipTap imports
+import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+
+// Editor styles
+const editorStyles = `
+  .tiptap {
+    min-height: 200px;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    padding: 0.375rem 0.75rem;
+    outline: none;
+  }
+  .tiptap:focus {
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  }
+`;
 
 const AdminPages = () => {
   const [pages, setPages] = useState([]);
   const [title, setTitle] = useState("");
-  const [content, setContent] = useState(""); // Will store HTML
+  const [content, setContent] = useState("");
   const [slug, setSlug] = useState("");
   const [editingPage, setEditingPage] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -22,13 +37,38 @@ const AdminPages = () => {
   // Initialize TipTap editor
   const editor = useEditor({
     extensions: [StarterKit],
-    content: content,
+    content: "",
     onUpdate: ({ editor }) => {
-      setContent(editor.getHTML()); // Update content as HTML
+      setContent(editor.getHTML());
     },
-    editable: userRole === "admin", // Disable if not admin
+    editable: false, // Start with false, update later
+    editorProps: {
+      attributes: {
+        class: "tiptap",
+      },
+    },
   });
 
+  // Update editor's editable state when userRole changes
+  useEffect(() => {
+    if (editor) {
+      console.log("User Role:", userRole); // Debug log
+      editor.setEditable(userRole === "admin");
+    }
+  }, [editor, userRole]);
+
+  // Sync editor content when editingPage or modal changes
+  useEffect(() => {
+    if (editor && showModal) {
+      if (editingPage) {
+        editor.commands.setContent(editingPage.content);
+      } else {
+        editor.commands.setContent("");
+      }
+    }
+  }, [editor, editingPage, showModal]);
+
+  // Fetch pages and set user role
   useEffect(() => {
     fetchPages();
   }, []);
@@ -36,8 +76,12 @@ const AdminPages = () => {
   const fetchPages = async () => {
     try {
       const token = localStorage.getItem("token");
-      if (!token) return;
+      if (!token) {
+        console.log("No token found");
+        return;
+      }
       const decoded = JSON.parse(atob(token.split(".")[1]));
+      console.log("Decoded token:", decoded); // Debug log
       setUserRole(decoded.role);
 
       const response = await api.get("/api/pages");
@@ -85,7 +129,6 @@ const AdminPages = () => {
     if (userRole !== "admin") return showToast("Only admins can edit pages.");
     setTitle(page.title);
     setContent(page.content);
-    if (editor) editor.commands.setContent(page.content); // Load content into editor
     setSlug(page.slug);
     setEditingPage(page);
     setShowModal(true);
@@ -136,6 +179,7 @@ const AdminPages = () => {
   return (
     <AdminLayout>
       <ToastContainer />
+      <style>{editorStyles}</style>
 
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div className="w-50">
@@ -204,7 +248,11 @@ const AdminPages = () => {
                 </div>
                 <div className="mb-3">
                   <label htmlFor="pageContent" className="form-label">Content</label>
-                  <EditorContent editor={editor} />
+                  {editor ? (
+                    <EditorContent editor={editor} />
+                  ) : (
+                    <div>Loading editor...</div>
+                  )}
                 </div>
               </div>
               <div className="modal-footer">

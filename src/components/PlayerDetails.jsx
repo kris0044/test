@@ -8,6 +8,8 @@ import { motion } from "framer-motion";
 import ReactPaginate from "react-paginate";
 import api from "../utility/axiosInterceptor.js";
 import Header from "./Header";
+import LoadingSpinner from "./LoadingSpinner.jsx";
+import Footer from "./Footer.jsx";
 
 const socket = io(api.defaults.baseURL);
 
@@ -193,16 +195,10 @@ function PlayerDetails() {
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center min-vh-100">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="spinner-border text-primary"
-          role="status"
-        />
+        <LoadingSpinner size="large" message="Fetching player details..." />
       </div>
     );
   }
-
   if (error) {
     return (
       <div className="d-flex justify-content-center align-items-center min-vh-100 text-danger fs-4">
@@ -316,7 +312,7 @@ function PlayerDetails() {
                   <h3 className="h6 mt-3">Team and Tournament Details</h3>
                   <ul className="list-group list-group-flush">
                     {teamTournaments.map(({ team, tournaments }, index) => (
-                      <li key={index} className="list-group-item" style={{ backgroundColor: "var(--card-bg)" }}>
+                      <li key={index} className="list-group-item" style={{ backgroundColor: "var(--card-bg)",color: "var(--text-color)" }}>
                         <strong>{team}:</strong> {tournaments.join(", ")}
                       </li>
                     ))}
@@ -580,6 +576,7 @@ function PlayerDetails() {
           </div>
         )}
       </div>
+      <Footer/>
     </div>
   );
 }

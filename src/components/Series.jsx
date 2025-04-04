@@ -4,6 +4,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import Header from "./Header";
 import { FaCalendarAlt, FaChevronDown, FaTrophy } from "react-icons/fa";
 import "../assets/styles/styles.css";
+import Footer from "./Footer.jsx";
 import api from "../utility/axiosInterceptor.js";
 
 function Series() {
@@ -164,6 +165,7 @@ function Series() {
     <div className="d-flex flex-column min-vh-100 series-container">
       <Header />
       <div className="container py-5 flex-grow-1">{renderTournaments()}</div>
+      <Footer/>
     </div>
   );
 }

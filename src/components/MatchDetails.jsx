@@ -6,6 +6,7 @@ import Header from "./Header";
 import { FaUserCircle, FaCalendarAlt, FaMapMarkerAlt } from "react-icons/fa";
 import "../assets/styles/styles.css";
 import api from "../utility/axiosInterceptor.js";
+import Footer from "./Footer";
 
 const socket = io(api.defaults.baseURL);
 
@@ -470,6 +471,7 @@ function MatchDetails() {
   };
 
   return (
+  <div>
     <div className="d-flex flex-column min-vh-100 match-details-container" style={{ backgroundColor: "var(--card-bg)", color: "var(--text-color)" }}>
       <Header />
       <div className="container py-4">
@@ -1121,6 +1123,8 @@ function MatchDetails() {
           </div>
         )}
       </div>
+    </div>
+      <Footer/>
     </div>
   );
 }
