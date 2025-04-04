@@ -125,7 +125,8 @@ const tournamentController = {
       if (tournament.matches.length > 0) {
         return res.status(400).json({ message: "League matches already scheduled" });
       }
-
+      const defaultMatchDate = new Date().toISOString().split("T")[0]; // Today's date
+    const defaultMatchTime = "00:00"; // Placeholder time
       const teams = tournament.teams;
       const matches = [];
 
@@ -136,6 +137,8 @@ const tournamentController = {
             teams: [teams[i]._id, teams[j]._id],
             overs,
             matchType: "League",
+            matchDate: defaultMatchDate,
+            matchTime: defaultMatchTime,
           });
           matches.push(match);
         }
@@ -167,6 +170,8 @@ const tournamentController = {
       if (!teams || teams.length !== 4) {
         return res.status(400).json({ message: "Exactly 4 teams required for semi-finals" });
       }
+      const defaultMatchDate = new Date().toISOString().split("T")[0]; // Today's date
+    const defaultMatchTime = "00:00"; // Placeholder time
 
       const semiFinals = [
         new Match({
@@ -174,12 +179,16 @@ const tournamentController = {
           teams: [teams[0], teams[3]], // 1st vs 4th
           overs,
           matchType: "Semi-Final",
+          matchDate: defaultMatchDate,
+        matchTime: defaultMatchTime,
         }),
         new Match({
           tournament: tournamentId,
           teams: [teams[1], teams[2]], // 2nd vs 3rd
           overs,
           matchType: "Semi-Final",
+          matchDate: defaultMatchDate,
+        matchTime: defaultMatchTime,
         }),
       ];
 
@@ -216,12 +225,15 @@ scheduleFinal: async (req, res) => {
     if (!teams || teams.length !== 2) {
       return res.status(400).json({ message: "Exactly 2 teams required for final" });
     }
-
+    const defaultMatchDate = new Date().toISOString().split("T")[0]; // Today's date
+    const defaultMatchTime = "00:00"; // Placeholder time
     const finalMatch = new Match({
       tournament: tournamentId,
       teams: [teams[0], teams[1]],
       overs,
       matchType: "Final",
+      matchDate: defaultMatchDate,
+      matchTime: defaultMatchTime,
     });
 
     await finalMatch.save();

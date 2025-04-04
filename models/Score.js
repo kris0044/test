@@ -14,7 +14,7 @@ const ScoreSchema = new mongoose.Schema({
   outBatsman: { type: mongoose.Schema.Types.ObjectId, ref: "Player" }, // New field
   over: { type: Number, required: true },
   innings: { type: Number, required: true },
-  ballType: { type: String, enum: ["legal", "wide", "noBall"], default: "legal" },
+  ballType: { type: String, enum: ["legal", "wide", "noBall", "bye", "legBye"], default: "legal" },
   timestamp: { type: Date, default: Date.now },
 });
 

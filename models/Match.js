@@ -5,7 +5,7 @@ const MatchSchema = new mongoose.Schema({
   overs: Number,
   status: {
     type: String,
-    enum: ["Scheduled", "Ongoing", "Completed"],
+    enum: ["Scheduled", "Ongoing", "Completed","Stopped","Cancelled"],
     default: "Scheduled",
   },
   winner: { type: mongoose.Schema.Types.ObjectId, ref: "Team", default: null },
@@ -19,11 +19,20 @@ const MatchSchema = new mongoose.Schema({
     enum: ["League", "Semi-Final", "Final"],
     default: "League",
   },
+  matchDate: { // New field for match date
+    type: String,
+    required: true,
+  },
+  matchTime: { // New field for match time
+    type: String,
+    required: true,
+  },
   createdAt: { type: Date, default: Date.now },
   currentInnings: { type: Number, default: 1 },
   battingTeam: { type: mongoose.Schema.Types.ObjectId, ref: "Team" },
   bowlingTeam: { type: mongoose.Schema.Types.ObjectId, ref: "Team" },
   captains: { type: Map, of: String, default: {} },
+  viceCaptains : { type: Map, of: String, default: {} },
   currentBatsmen: [
     { type: mongoose.Schema.Types.ObjectId, ref: "Player", default: null },
   ],
@@ -48,6 +57,11 @@ const MatchSchema = new mongoose.Schema({
       innings1: { batting: {}, bowling: {}, extras: { wides: {}, noBalls: {} } },
       innings2: { batting: {}, bowling: {}, extras: { wides: {}, noBalls: {} } },
     },
+  },
+  playing11: {
+    type: Map,
+    of: [{ type: mongoose.Schema.Types.ObjectId, ref: "Player" }],
+    default: {},
   },
   // New fields for toss
   tossWinner: { type: mongoose.Schema.Types.ObjectId, ref: "Team", default: null },

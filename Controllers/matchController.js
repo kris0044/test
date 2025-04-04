@@ -5,12 +5,13 @@ const Tournament = require("../models/Tournament");
 const User = require("../models/User");
 const Umpire = require("../models/Umpire");
 const Venue = require("../models/Venue");
+const { ObjectId } = require('mongoose').Types;
 
 // Create a match (Admin only)
 exports.createMatch = async (req, res) => {
-  const { teams, overs, tournament, assignedScorer, umpires, venue, referee } = req.body;
+  const { teams, overs, tournament, assignedScorer, umpires, venue, referee, matchType, matchDate, matchTime } = req.body;
 
-  console.log("Request body:", req.body); // Debug log
+  console.log("Request body:", req.body);
 
   if (!req.user || req.user.role !== "admin") {
     return res.status(403).json({ error: "Only admins can create matches" });
@@ -22,11 +23,17 @@ exports.createMatch = async (req, res) => {
   if (!overs || overs < 1) {
     return res.status(400).json({ error: "Invalid number of overs." });
   }
-  if (!tournament) {
-    return res.status(400).json({ error: "Tournament is required." });
-  }
   if (!venue) {
     return res.status(400).json({ error: "Venue is required." });
+  }
+  if (!matchType) {
+    return res.status(400).json({ error: "Match type is required." });
+  }
+  if (!matchDate) {
+    return res.status(400).json({ error: "Match date is required." });
+  }
+  if (!matchTime) {
+    return res.status(400).json({ error: "Match time is required." });
   }
 
   try {
@@ -35,14 +42,17 @@ exports.createMatch = async (req, res) => {
       return res.status(400).json({ error: "Invalid team selection." });
     }
 
-    const tournamentData = await Tournament.findById(tournament);
-    if (!tournamentData) {
-      return res.status(400).json({ error: "Invalid tournament ID." });
-    }
+    let tournamentData = null;
+    if (tournament) {
+      tournamentData = await Tournament.findById(tournament);
+      if (!tournamentData) {
+        return res.status(400).json({ error: "Invalid tournament ID." });
+      }
 
-    const tournamentTeams = tournamentData.teams.map((t) => t.toString());
-    if (!teams.every((teamId) => tournamentTeams.includes(teamId))) {
-      return res.status(400).json({ error: "Selected teams must belong to the tournament." });
+      const tournamentTeams = tournamentData.teams.map((t) => t.toString());
+      if (!teams.every((teamId) => tournamentTeams.includes(teamId))) {
+        return res.status(400).json({ error: "Selected teams must belong to the tournament." });
+      }
     }
 
     let scorerId = assignedScorer === "" || assignedScorer === undefined ? null : assignedScorer;
@@ -71,25 +81,28 @@ exports.createMatch = async (req, res) => {
     const newMatch = new Match({
       teams,
       overs,
-      tournament,
+      tournament: tournament || null, // Allow null if no tournament is provided
       battingTeam: teams[0],
       bowlingTeam: teams[1],
       assignedScorer: scorerId,
       umpires: umpireIds,
-      venue, // Ensure this is being set
+      venue,
       referee,
+      matchType,
+      matchDate,
+      matchTime,
     });
 
-    console.log("New match before save:", newMatch); // Debug log
+    console.log("New match before save:", newMatch);
     await newMatch.save();
-    console.log("Match saved:", newMatch); // Debug log
+    console.log("Match saved:", newMatch);
 
     res.status(201).json({
       message: "Match created successfully",
       match: {
         ...newMatch._doc,
         teamNames,
-        tournament: tournamentData.name,
+        tournament: tournamentData ? tournamentData.name : "No Tournament",
       },
     });
   } catch (error) {
@@ -104,7 +117,7 @@ exports.getMatches = async (req, res) => {
     const matches = await Match.find()
       .populate("teams", "name")
       .populate("tournament", "name")
-      .populate("umpires", "name email") // Populate umpires with name and email
+      .populate("umpires", "name email")
       .populate("venue", "name")
       .populate("assignedScorer", "name email");
     res.status(200).json(matches);
@@ -123,7 +136,7 @@ exports.updateMatch = async (req, res) => {
     const match = await Match.findById(req.params.id);
     if (!match) return res.status(404).json({ message: "Match not found" });
 
-    const { tossWinner, tossChoice, battingTeam, bowlingTeam, assignedScorer, umpires, venue, referee } = req.body;
+    const { tossWinner, tossChoice, battingTeam, bowlingTeam, assignedScorer, umpires, venue, referee, matchDate, matchTime,playing11 } = req.body;
 
     if (tossWinner || tossChoice) {
       if (!tossWinner || !tossChoice) {
@@ -134,6 +147,9 @@ exports.updateMatch = async (req, res) => {
       }
       if (!["bat", "bowl"].includes(tossChoice)) {
         return res.status(400).json({ message: "Toss choice must be 'bat' or 'bowl'" });
+      }
+      if (playing11) {
+        match.playing11 = playing11;
       }
     }
 
@@ -148,7 +164,6 @@ exports.updateMatch = async (req, res) => {
       match.assignedScorer = null;
     }
 
-    // Validate umpires
     let umpireIds = umpires === undefined ? match.umpires : umpires;
     if (umpireIds && umpireIds.length > 0) {
       const umpireData = await Umpire.find({ _id: { $in: umpireIds } });
@@ -160,7 +175,6 @@ exports.updateMatch = async (req, res) => {
       match.umpires = [];
     }
 
-    // Validate venue
     let venueId = venue === undefined ? match.venue : venue;
     if (venueId) {
       const venueData = await Venue.findById(venueId);
@@ -170,9 +184,13 @@ exports.updateMatch = async (req, res) => {
       match.venue = venueId;
     }
 
+    // Handle matchDate and matchTime updates only if provided
+    if (matchDate !== undefined) match.matchDate = matchDate;
+    if (matchTime !== undefined) match.matchTime = matchTime;
+
     const updatedMatch = await Match.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, assignedScorer: scorerId, umpires: umpireIds, venue: venueId, referee },
+      { ...req.body, assignedScorer: scorerId, umpires: umpireIds, venue: venueId, referee, matchDate, matchTime ,playing11},
       { new: true }
     )
       .populate("teams", "name")
@@ -211,6 +229,10 @@ exports.deleteMatch = async (req, res) => {
 // Update match state (Admin or assigned scorer)
 exports.updateMatchState = async (req, res) => {
   try {
+    if (!ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid match ID" });
+    }
+
     const match = await Match.findById(req.params.id);
     if (!match) {
       return res.status(404).json({ message: "Match not found" });
@@ -221,27 +243,29 @@ exports.updateMatchState = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // Fix authorization: Allow admin OR assigned scorer
     const isAdmin = user.role === "admin";
-    const isAssignedScorer = match.assignedScorer && match.assignedScorer.toString() === user.id.toString();
+    const isAssignedScorer = match.assignedScorer && user.id && 
+      match.assignedScorer.toString() === user.id.toString();
 
     if (!isAdmin && !isAssignedScorer) {
       return res.status(403).json({ message: "You are not authorized to score this match" });
     }
 
+    console.log("Updating match state with:", req.body);
     const updatedMatch = await Match.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
       { new: true, runValidators: true }
-    )
-      .populate("teams", "name")
-      .populate("tournament", "name");
-
+    );
     if (!updatedMatch) {
       return res.status(404).json({ message: "Match not found" });
     }
 
-    // Emit update via Socket.IO if available
+    await updatedMatch.populate([
+      { path: "teams", select: "name" },
+      { path: "tournament", select: "name" }
+    ]);
+
     const emitMatchUpdate = req.app.get("emitMatchUpdate");
     if (emitMatchUpdate) {
       emitMatchUpdate(updatedMatch);
@@ -251,7 +275,12 @@ exports.updateMatchState = async (req, res) => {
 
     res.json(updatedMatch);
   } catch (error) {
-    console.error("Error updating match state:", error);
+    console.error("Error updating match state:", {
+      message: error.message,
+      stack: error.stack,
+      body: req.body,
+      params: req.params
+    });
     res.status(500).json({ error: "Error updating match state", details: error.message });
   }
 };
@@ -268,8 +297,9 @@ exports.getMatchById = async (req, res) => {
       .populate("winner", "name")
       .populate("tournament", "name")
       .populate("assignedScorer", "name email")
-      .populate("umpires", "name") // Populate umpires with name and email
-      .populate("venue", "name"); 
+      .populate("umpires", "name")
+      .populate("venue", "name")
+      .populate({ path: "playing11", populate: { path: "value", model: "Player", select: "name" } }); // Populate playing11
     if (!match) return res.status(404).json({ message: "Match not found" });
     res.json(match);
   } catch (err) {
@@ -291,7 +321,7 @@ exports.getTeamMatches = async (req, res) => {
       .limit(parseInt(limit))
       .populate("teams", "name")
       .populate("winner", "name")
-      .populate("umpires", "name email") // Populate umpires with name and email
+      .populate("umpires", "name email")
       .populate("venue", "name"); 
 
     res.status(200).json(matches);

@@ -3,7 +3,7 @@ const router = express.Router();
 const teamController = require("../controllers/teamController");
 const authMiddleware = require("../middleware/authMiddleware");
 // Create a new team
-router.post("/", teamController.createTeam);
+router.post("/",authMiddleware, teamController.createTeam);
 
 // Fetch all teams created by a user
 router.get("/user/:userId", teamController.getUserTeams);
@@ -11,9 +11,9 @@ router.get("/user/:userId", teamController.getUserTeams);
 router.get("/", teamController.getTeams);
 
 // Update a team
-router.put("/:id", teamController.updateTeam);
+router.put("/:id",authMiddleware, teamController.updateTeam);
 
 // Delete a team
-router.delete("/:id", teamController.deleteTeam);
+router.delete("/:id",authMiddleware, teamController.deleteTeam);
 
 module.exports = router;

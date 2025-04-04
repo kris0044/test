@@ -12,8 +12,11 @@ const userRoutes = require("./routes/users");
 const tournamentRoutes = require("./routes/tournaments");
 const venueRoutes = require("./routes/venueRoutes");
 const umpireRoutes = require("./routes/umpireRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
+const fixturesRoutes = require("./routes/fixturesRoutes");
+const stateRoutes = require("./routes/statsRoutes");
 const authr = require("./routes/auth");
-
+const pageRoutes = require("./routes/pageRoutes");
 dotenv.config();
 
 const app = express();
@@ -50,6 +53,10 @@ app.use("/api/users", userRoutes);
 app.use("/api/auth", authr);
 app.use("/api/venues", venueRoutes);
 app.use("/api/umpires", umpireRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/fixtures", fixturesRoutes);
+app.use("/api/states", stateRoutes);
+app.use("/api/pages", pageRoutes);
 
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);

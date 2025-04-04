@@ -1,4 +1,8 @@
 const Player = require("../models/Player");
+const Match = require("../models/Match");
+const Score = require("../models/Score");
+const Team = require("../models/Team");
+const Tournament = require("../models/Tournament");
 
 // Get all players
 exports.getAllPlayers = async (req, res) => {
@@ -208,5 +212,153 @@ exports.getPlayerStats = async (req, res) => {
     res.json({ batting: battingStats, bowling: bowlingStats });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getPlayerFullDetails = async (req, res) => {
+  try {
+    const { playerId } = req.params;
+
+    // Fetch player details
+    const player = await Player.findById(playerId);
+    if (!player) return res.status(404).json({ message: "Player not found" });
+
+    // Fetch team details (team is stored as a string name)
+    const team = player.team ? await Team.findOne({ name: player.team }).populate("players", "name role") : null;
+
+    // Fetch matches where the player is involved
+    const matches = await Match.find({
+      $or: [
+        { currentBatsmen: playerId },
+        { currentBowler: playerId },
+        { "matchStats.innings1.batting": { $exists: true } },
+        { "matchStats.innings2.batting": { $exists: true } },
+      ],
+    })
+      .populate("teams", "name")
+      .populate("winner", "name")
+      .populate("tournament", "name")
+      .populate("venue", "name")
+      .populate("battingTeam", "name")
+      .populate("bowlingTeam", "name")
+      .sort({ createdAt: -1 });
+
+    // Fetch scores for these matches
+    const matchIds = matches.map((match) => match._id);
+    const scores = await Score.find({
+      $or: [
+        { batsman: playerId },
+        { bowler: playerId },
+        { outBatsman: playerId },
+      ],
+      match: { $in: matchIds },
+    })
+      .populate("batsman", "name")
+      .populate("bowler", "name")
+      .populate("outBatsman", "name")
+      .populate("team", "name");
+
+    // Aggregate batting and bowling stats
+    let battingStats = { runs: 0, balls: 0, innings: 0, highest: 0, fifties: 0, hundreds: 0, dismissals: 0 };
+    let bowlingStats = { runs: 0, balls: 0, wickets: 0, best: "0/0", fiveWickets: 0 };
+
+    // From Match.matchStats
+    matches.forEach((match) => {
+      if (match.matchStats instanceof Map) {
+        ["innings1", "innings2"].forEach((inning) => {
+          const inningsStats = match.matchStats.get(inning) || {};
+          const batting = inningsStats.batting || {};
+          const bowling = inningsStats.bowling || {};
+
+          if (batting[playerId]) {
+            const stats = batting[playerId];
+            battingStats.runs += stats.runs || 0;
+            battingStats.balls += stats.balls || 0;
+            battingStats.innings += 1;
+            battingStats.highest = Math.max(battingStats.highest, stats.runs || 0);
+            if (stats.runs >= 50 && stats.runs < 100) battingStats.fifties += 1;
+            if (stats.runs >= 100) battingStats.hundreds += 1;
+          }
+
+          if (bowling[playerId]) {
+            const stats = bowling[playerId];
+            bowlingStats.runs += stats.runs || 0;
+            bowlingStats.balls += stats.balls || 0;
+            bowlingStats.wickets += stats.wickets || 0;
+            const bestWickets = stats.wickets || 0;
+            const bestRuns = stats.runs || 0;
+            const currentBest = bowlingStats.best.split("/").map(Number);
+            if (bestWickets > currentBest[0] || (bestWickets === currentBest[0] && bestRuns < currentBest[1])) {
+              bowlingStats.best = `${bestWickets}/${bestRuns}`;
+            }
+            if (stats.wickets >= 5) bowlingStats.fiveWickets += 1;
+          }
+        });
+      }
+    });
+
+    // Enhance with Score data
+    scores.forEach((score) => {
+      if (score.batsman?._id.toString() === playerId && score.ballType === "legal") {
+        battingStats.runs += score.runs || 0;
+        battingStats.balls += 1;
+      }
+      if (score.bowler?._id.toString() === playerId) {
+        bowlingStats.runs += score.runs || 0;
+        if (score.ballType === "legal") {
+          bowlingStats.balls += 1;
+          if (score.wicket) bowlingStats.wickets += 1;
+        }
+      }
+      if (score.outBatsman?._id.toString() === playerId) {
+        battingStats.dismissals += 1;
+      }
+    });
+
+    // Response structure
+    const response = {
+      player: {
+        id: player._id,
+        name: player.name,
+        team: team ? { id: team._id, name: team.name, players: team.players } : null,
+        role: player.role,
+        createdAt: player.createdAt,
+      },
+      matches: matches.map((match) => ({
+        id: match._id,
+        teams: match.teams,
+        venue: match.venue,
+        winner: match.winner,
+        tournament: match.tournament,
+        status: match.status,
+        matchType: match.matchType, // Added matchType
+        battingTeam: match.battingTeam,
+        bowlingTeam: match.bowlingTeam,
+        createdAt: match.createdAt,
+      })),
+      stats: {
+        batting: battingStats,
+        bowling: bowlingStats,
+      },
+      scores: scores.map((score) => ({
+        matchId: score.match,
+        team: score.team,
+        batsman: score.batsman,
+        bowler: score.bowler,
+        runs: score.runs,
+        wicket: score.wicket,
+        wicketType: score.wicketType,
+        outBatsman: score.outBatsman,
+        ballType: score.ballType,
+        over: score.over,
+        innings: score.innings,
+      })),
+    };
+
+    console.log("Player full details:", JSON.stringify(response, null, 2)); // Debug
+    res.json(response);
+  } catch (err) {
+    console.error("Error in getPlayerFullDetails:", err);
+    res.status(500).json({ message: "Error fetching player details", error: err.message });
   }
 };
