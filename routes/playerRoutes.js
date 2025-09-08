@@ -1,8 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const {getPlayerFullDetails,getPlayerById,getPlayerMatches,getPlayerStats, getPlayer,getAllPlayers, createPlayer, updatePlayer, deletePlayer ,deleteMultiplePlayers} = require("../controllers/playerController");
+const {getPlayerFullDetails,getAvailablePlayers,getPlayerById,getPlayerMatches,getPlayerStats, getPlayer,getAllPlayers, createPlayer, updatePlayer, deletePlayer ,deleteMultiplePlayers} = require("../controllers/playerController");
 const authMiddleware = require("../Middleware/authMiddleware"); // Protect routes
-const { getAvailablePlayers } = require("../Controllers/playerController");
 
 
 router.get("/",getAllPlayers);
