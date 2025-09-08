@@ -31,7 +31,7 @@ import axios from "axios";
 import { toast } from "react-toastify"; // Assuming you're using toast in CreateMatch.jsx
 
 const api = axios.create({
-  baseURL: "http://localhost:5000",
+  baseURL: "https://test-1-iryd.onrender.com/",
 });
 
 // Request Interceptor
