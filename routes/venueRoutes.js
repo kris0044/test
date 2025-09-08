@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const venueController = require("../controllers/venueController");
-const authMiddleware = require("../middleware/authMiddleware"); // Protect routes
+const venueController = require("../Controllers/venueController");
+const authMiddleware = require("../Middleware/authMiddleware"); // Protect routes
 
 router.get("/", venueController.getVenues);
 router.post("/", authMiddleware,venueController.addVenue);

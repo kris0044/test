@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const pageController = require("../controllers/pageController");
-const auth = require("../middleware/authMiddleware"); 
+const pageController = require("../Controllers/pageController");
+const auth = require("../Middleware/authMiddleware"); 
 // Public routes
 router.get("/", pageController.getAllPages);
 router.get("/:slug", pageController.getPageBySlug);

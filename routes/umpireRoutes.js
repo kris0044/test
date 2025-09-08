@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const umpireController = require("../controllers/umpireController");
-const authMiddleware = require("../middleware/authMiddleware"); // Protect routes
+const umpireController = require("../Controllers/umpireController");
+const authMiddleware = require("../Middleware/authMiddleware"); // Protect routes
 
 router.get("/", umpireController.getUmpires);
 router.post("/",authMiddleware, umpireController.addUmpire);

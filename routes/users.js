@@ -1,8 +1,8 @@
 // routes/users.js
 const express = require("express");
 const router = express.Router();
-const userController = require("../controllers/userController");
-const authMiddleware = require("../middleware/authMiddleware");
+const userController = require("../Controllers/Usercontroller");
+const authMiddleware = require("../Middleware/authMiddleware");
 // Routes
 router.get("/",  userController.getAllUsers);
 router.put("/:id",authMiddleware,  userController.updateUser);

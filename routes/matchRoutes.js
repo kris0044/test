@@ -8,8 +8,8 @@ const {
   updateMatchState,
   getTeamMatches,
   getHeadToHeadMatches,
-} = require("../controllers/matchController");
-const authMiddleware = require("../middleware/authMiddleware"); 
+} = require("../Controllers/matchController");
+const authMiddleware = require("../Middleware/authMiddleware"); 
 const router = express.Router();
 
 

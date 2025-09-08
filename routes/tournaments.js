@@ -1,8 +1,8 @@
 // routes/tournament.routes.js
 const express = require("express");
 const router = express.Router();
-const tournamentController = require("../controllers/tournamentController");
-const authMiddleware = require("../middleware/authMiddleware");
+const tournamentController = require("../Controllers/tournamentController");
+const authMiddleware = require("../Middleware/authMiddleware");
 
 router.get("/", tournamentController.getAllTournaments);
 router.post("/",authMiddleware, tournamentController.createTournament);

@@ -8,7 +8,7 @@ const ScoreSchema = new mongoose.Schema({
   runs: { type: Number, default: 0 },
   ball: { type: String, required: true },
   wicket: { type: Boolean, default: false },
-  wicketType: { type: String, enum: ["bowled", "caught", "stumped", "run out"] },
+  wicketType: { type: String, enum: ["bowled", "caught","hit wicket", "lbw","stumped", "run out"] },
   fielders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Player" }],
   runsOnWicket: { type: Number, default: 0 }, // New field
   outBatsman: { type: mongoose.Schema.Types.ObjectId, ref: "Player" }, // New field

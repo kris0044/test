@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
-const scoreController = require("../controllers/scoreController");
+const scoreController = require("../Controllers/scoreController");
 const Score = require("../models/Score"); // Adjust path to your Score model
-const authMiddleware = require("../middleware/authMiddleware");
+const authMiddleware = require("../Middleware/authMiddleware");
 router.get("/", scoreController.getScores);
 router.post("/",authMiddleware, scoreController.createScore);
 router.put("/:id", authMiddleware,scoreController.updateScore); // New: Update score

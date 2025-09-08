@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const statsController = require('../controllers/statsController');
+const statsController = require('../Controllers/statsController');
 
 // Fetch all tournaments
 router.get('/tournaments/list', statsController.fetchTournamentList);
