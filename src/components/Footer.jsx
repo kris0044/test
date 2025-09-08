@@ -51,6 +51,9 @@ function Footer() {
           <Link to="page/about-us" className="navbar-brand " style={{ color: "var(--header-text)" }}>
        about us
           </Link>
+           <Link to="login" className="navbar-brand " style={{ color: "var(--header-text)" }}>
+       logs
+          </Link>
 
           {/* Right: Copyright Notice */}
           <Link to="/page/contact-us" className="navbar-brand " style={{ color: "var(--header-text)" }}>
