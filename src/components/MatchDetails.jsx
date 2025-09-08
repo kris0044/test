@@ -796,14 +796,14 @@ function MatchDetails() {
                 </div>
               </div>
 
-              <div className="head-to-head" style={{ backgroundColor: "var(--card-bg)", color: "var(--text-color)" }}>
+              {/* <div className="head-to-head" style={{ backgroundColor: "var(--card-bg)", color: "var(--text-color)" }}>
                 <h3 className="">Head to Head (Last 10 matches)</h3>
                 <div className="d-flex align-items-center justify-content-between">
                   <span className="team-name">{match.teams[0].name}</span>
                   <span className="match-score">{headToHead.team1Wins} - {headToHead.team2Wins}</span>
                   <span className="team-name">{match.teams[1].name}</span>
                 </div>
-              </div>
+              </div> */}
             </div>
 
             <div className="playing-xi-container" style={{ backgroundColor: "var(--card-bg)", color: "var(--text-color)" }}>
